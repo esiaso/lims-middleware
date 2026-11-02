@@ -81,6 +81,10 @@ public sealed class LimsFixture : IAsyncLifetime
                 ["Instruments:Instruments:0:Transport:Host"] = "127.0.0.1",
                 ["Instruments:Instruments:0:Transport:Port"] = analyzerPort.ToString(),
                 ["AuditExport:FileSinkDirectory"] = Path.Combine(Path.GetTempPath(), DatabaseName),
+                ["CatalogSync:Enabled"] = "false",
+                ["Reconciliation:Interval"] = "01:00:00",
+                ["Reconciliation:CriticalEscalation"] = "00:00:01",
+                ["Housekeeping:Interval"] = "01:00:00",
                 ["Bootstrap:AdminUsername"] = "admin",
                 ["Bootstrap:AdminPassword"] = "bootstrap-password-123",
             });

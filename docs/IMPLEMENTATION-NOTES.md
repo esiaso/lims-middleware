@@ -34,17 +34,33 @@ Status as of this branch. Section numbers refer to the design document.
 3. **LOINC comes from the order line, else from the active catalog entry.**
 4. **Accession check digit is Luhn mod 10.** The design left the algorithm open.
 
-## Not yet built (needed before go-live)
+## Go-live items (PR #2)
 
-* Signed WiX MSI and offline bundle (10.2). WiX needs a Windows build agent; `deploy/windows/install.ps1` is an interim script.
-* Secrets protected with DPAPI (9.4). Today secrets come from configuration (`appsettings.Local.json`, ignored by git). **Do not run in production this way.**
-* HTTPS binding to the hospital certificate and HSTS on Kestrel (configuration, 9.4).
-* Syslog over TLS audit sink (only the WORM file share sink exists).
-* Reconciliation jobs (7.7), housekeeping disk checks (7.6), critical-result escalation timer, delta checks.
-* Screens for mappings and configuration, audit search, downtime registration, linking unmatched results.
-* HMIS catalog sync (`GET /test-catalog`) into the mapping approval queue.
-* Backup and restore scripts (10.5).
+* **Secrets (9.4):** `dpapi-machine:` / `dpapi-user:` values made with `Lims.Host.exe protect-secret`, `credential:` (systemd) and
+  `file:` references. Outside Development and Testing the service refuses to start if a secret key holds a plain value
+  (override: `AllowPlaintextSecrets=true`, for emergencies only).
+* **HTTPS (9.4):** Kestrel binds only HTTPS when `Https:CertificateThumbprint` (LocalMachine\My) or a PFX is set; TLS 1.2 and 1.3;
+  refuses to start with an expired certificate. HSTS is left to the reverse proxy if one is added.
+* **Reconciliation (7.7) and critical escalation (7.8):** every 5 minutes; delivery overdue (STAT 15 min, routine 60 min),
+  critical not acknowledged (15 min, audited as `result.critical_escalated`), pending at instrument past the test's TAT,
+  orders not collected in 24 h, HMIS cancels after release, unlinked downtime orders. One open item per problem; items
+  close themselves when the condition clears, except cancel-after-release, which needs an approver.
+* **Disk watch (7.6):** warn at 20% free, critical at 10%, and at 5% the ASTM link NAKs new messages so the analyzer keeps them.
+* **Audit export:** syslog over TLS (RFC 5424 messages, RFC 5425 framing, optional certificate pin) alongside the WORM file sink, each with its own position.
+* **Catalog sync:** daily `GET /test-catalog`; changes become proposed catalog versions that a Lab Manager approves (not the proposer).
+* **Screens:** configuration (instruments, mappings, catalog approvals, certificate), audit log search and chain verify (Auditor),
+  downtime registration and linking, reconciliation, exception resolve with reason.
+* **Backup (10.4):** `deploy/windows/backup.ps1`, `restore-test.ps1` and `docs/BACKUP-RUNBOOK.md` (WAL archiving for the 15-minute RPO).
+* **MSI (10.2):** WiX v5 project in `installer/`, built and install-tested on a Windows CI runner. It is **not code-signed**
+  yet; signing needs the hospital's or vendor's code-signing certificate, added as a CI secret.
+
+## Still not built
+
+* Code signing of the MSI and an offline bundle with PostgreSQL and the .NET prerequisites.
+* Delta checks against the patient's previous result.
+* Dedicated mapping editor screen (mappings are proposed and approved through the API and the configuration screen lists them).
 * cobas c111 and Mindray BC-5000 adapters (later phases).
+* PowerShell scripts were written for Windows Server 2022 but have only been syntax-reviewed, not run, because no Windows host was available; the MSI is exercised by CI.
 
 ## Open items that block Gate 2 for the e411
 

@@ -56,12 +56,7 @@ public static class HmisSimulatorProgram
 
         api.MapPost("/orders/{id}/status", (string id) => Results.Accepted());
 
-        api.MapGet("/test-catalog", () => Results.Json(new[]
-        {
-            new HmisCatalogEntry("TSH", "Thyroid stimulating hormone", "3016-3", "mIU/L"),
-            new HmisCatalogEntry("FT4", "Free thyroxine", "3024-7", "pmol/L"),
-            new HmisCatalogEntry("HBSAG", "Hepatitis B surface antigen", "5196-1", null),
-        }, json));
+        api.MapGet("/test-catalog", (HmisSimulatorState s) => Results.Json(s.Catalog.ToArray(), json));
 
         api.MapPost("/results", async (HttpContext ctx, HmisSimulatorState s) =>
         {

@@ -13,7 +13,7 @@ using Lims.Sim.E411;
 namespace Lims.IntegrationTests;
 
 [Collection("lims")]
-public sealed class EndToEndTests(LimsFixture f)
+public sealed partial class EndToEndTests(LimsFixture f)
 {
     private static int _seq;
 

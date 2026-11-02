@@ -37,6 +37,11 @@ public sealed class HmisSimulatorState
     public string? MiddlewareWebhookUrl { get; set; }
     public ConcurrentDictionary<string, DateTimeOffset> Tokens { get; } = new();
     public int PostResultCalls;
+    public ConcurrentQueue<HmisCatalogEntry> Catalog { get; } = new([
+        new HmisCatalogEntry("TSH", "Thyroid stimulating hormone", "3016-3", "mIU/L"),
+        new HmisCatalogEntry("FT4", "Free thyroxine", "3024-7", "pmol/L"),
+        new HmisCatalogEntry("HBSAG", "Hepatitis B surface antigen", "5196-1", null),
+    ]);
 
     public HmisOrder UpsertOrder(HmisOrder order)
     {
