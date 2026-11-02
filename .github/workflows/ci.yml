@@ -58,6 +58,9 @@ jobs:
           if ($LASTEXITCODE -ne 1) { throw "CLI did not run from the install folder" }
           $p = Start-Process msiexec -ArgumentList "/x `"$($msi.FullName)`" /qn" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
+          if (Get-Service LimsMiddleware -ErrorAction SilentlyContinue) { throw "service still registered after uninstall" }
+          # The CLI check above leaves LASTEXITCODE=1 on purpose; the runner would otherwise report it as the step result.
+          exit 0
       - uses: actions/upload-artifact@v4
         with:
           name: msi
