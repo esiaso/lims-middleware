@@ -1,0 +1,37 @@
+@page
+@model Lims.Host.Pages.ConfigurationModel
+@{ ViewData["Title"] = "Test catalog and mappings"; }
+<h1>Test catalog and instrument mappings</h1>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+<p>Changes are proposed, then approved by a different Lab Manager. Every result records the mapping version used.</p>
+<h2>Catalog</h2>
+<table>
+<tr><th>Code</th><th>v</th><th>Name</th><th>LOINC</th><th>Unit</th><th>Ref</th><th>Critical</th><th>Status</th><th>Source</th><th></th></tr>
+@foreach (var c in Model.Catalog)
+{
+  <tr><td>@c.code</td><td>@c.version</td><td>@c.name</td><td>@c.loinc</td><td>@c.ucum_unit</td><td>@c.ref_low - @c.ref_high</td><td>@c.critical_low / @c.critical_high</td><td>@c.status</td><td>@c.source</td>
+  <td>@if ((string)c.status == "proposed" && User.IsInRole(Roles.LabManager)) { <form method="post" asp-page-handler="ApproveCatalog" class="inline"><input type="hidden" name="code" value="@c.code"><button>Approve</button></form> }</td></tr>
+}
+</table>
+<h2>Instrument mappings</h2>
+<table>
+<tr><th>Instrument</th><th>Code</th><th>Test</th><th>v</th><th>Type</th><th>Factor</th><th>Expected unit</th><th>Status</th><th>Proposed by</th><th>Approved by</th><th></th></tr>
+@foreach (var m in Model.Mappings)
+{
+  <tr><td>@m.instrument_id</td><td>@m.instrument_code</td><td>@m.catalog_code</td><td>@m.version</td><td>@m.result_type</td><td>@m.unit_factor</td><td>@m.instrument_unit</td><td>@m.status</td><td>@m.proposed_by</td><td>@m.approved_by</td>
+  <td>@if ((string)m.status == "proposed" && User.IsInRole(Roles.LabManager)) { <form method="post" asp-page-handler="ApproveMapping" class="inline"><input type="hidden" name="id" value="@m.id"><button>Approve</button></form> }</td></tr>
+}
+</table>
+@if (User.IsInRole(Roles.LabManager))
+{
+  <h3>Propose a mapping</h3>
+  <form method="post" asp-page-handler="ProposeMapping">
+    <input name="instrumentId" placeholder="Instrument (e411-1)" required>
+    <input name="instrumentCode" placeholder="Instrument code" required>
+    <input name="catalogCode" placeholder="Catalog code" required>
+    <select name="resultType"><option>numeric</option><option>qualitative</option><option>text</option></select>
+    <input name="unitFactor" value="1" size="4">
+    <input name="instrumentUnit" placeholder="Expected unit (optional)">
+    <button>Propose</button>
+  </form>
+}

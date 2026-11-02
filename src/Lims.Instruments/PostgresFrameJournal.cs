@@ -6,10 +6,11 @@ using Lims.Platform;
 
 namespace Lims.Instruments;
 
-public sealed class PostgresFrameJournal(Db db, InboxStore inbox) : IFrameJournal
+public sealed class PostgresFrameJournal(Db db, InboxStore inbox, StorageGate storage) : IFrameJournal
 {
     public async ValueTask<bool> IsAvailableAsync(CancellationToken ct)
     {
+        if (!storage.AcceptingNewMessages) return false;
         try
         {
             await using var conn = await db.OpenAsync(ct);

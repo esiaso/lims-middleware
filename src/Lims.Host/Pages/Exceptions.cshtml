@@ -2,11 +2,17 @@
 @model Lims.Host.Pages.ExceptionsModel
 @{ ViewData["Title"] = "Exceptions"; }
 <h1>Exceptions</h1>
-<p>Unmatched barcodes, unmapped codes and quarantined results. None of these reach a patient record automatically.</p>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+<p>Unmatched barcodes, unmapped codes and quarantined results. None of these reach a patient record automatically.
+To link an unmatched result, fix the cause (register the specimen, approve the mapping), then reprocess the message: it goes through every check again.</p>
 <table>
-<tr><th>Received</th><th>Kind</th><th>Instrument</th><th>Sample ID</th><th>Code</th><th>Value</th><th>Reason</th></tr>
+<tr><th>Received</th><th>Kind</th><th>Instrument</th><th>Sample ID</th><th>Code</th><th>Value</th><th>Reason</th><th></th></tr>
 @foreach (var e in Model.Rows)
 {
-  <tr><td>@e.ReceivedAt.ToString("u")</td><td>@e.Kind</td><td>@e.InstrumentId</td><td>@e.SampleId</td><td>@e.TestCode</td><td>@e.RawValue</td><td>@e.Reason</td></tr>
+  <tr><td>@e.ReceivedAt.ToString("u")</td><td>@e.Kind</td><td>@e.InstrumentId</td><td>@e.SampleId</td><td>@e.TestCode</td><td>@e.RawValue</td><td>@e.Reason</td>
+  <td>
+    @if (User.IsInRole(Roles.IntegrationOperator)) { <form method="post" asp-page-handler="Replay" class="inline"><input type="hidden" name="inboxId" value="@e.InboxMessageId"><input name="reason" placeholder="Reason" required><button>Reprocess</button></form> }
+    @if (User.IsInRole(Roles.Approver)) { <form method="post" asp-page-handler="Resolve" class="inline"><input type="hidden" name="id" value="@e.Id"><input name="reason" placeholder="Reason" required><button>Close</button></form> }
+  </td></tr>
 }
 </table>

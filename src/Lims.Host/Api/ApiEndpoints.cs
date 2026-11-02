@@ -171,3 +171,41 @@ public static class ApiEndpoints
     public static bool SignedInRecently(ClaimsPrincipal u, IClock clock) =>
         long.TryParse(u.FindFirstValue("auth_time"), out var t) && clock.UtcNow - DateTimeOffset.FromUnixTimeSeconds(t) <= ApprovalReauthWindow;
 }
+
+public sealed record ResolveRequest(string Reason);
+
+public static class OperationsEndpoints
+{
+    public static void Map(WebApplication app)
+    {
+        var api = app.MapGroup("/api").RequireAuthorization("any");
+        api.MapPost("/catalog/{code}/approve", async (string code, ClaimsPrincipal u, CatalogService s, CancellationToken ct) =>
+        { await s.ApproveAsync(code, u.UserName(), ct); return Results.NoContent(); }).RequireAuthorization(Roles.LabManager);
+
+        api.MapGet("/reconciliation", async (Db db, CancellationToken ct) =>
+        {
+            await using var conn = await db.OpenAsync(ct);
+            return Results.Ok(await conn.QueryAsync("""
+                SELECT id, kind, entity_type, entity_id, detail, severity, first_seen_at, last_seen_at
+                FROM platform.reconciliation_item WHERE resolved_at IS NULL ORDER BY severity='critical' DESC, first_seen_at
+                """));
+        });
+        api.MapPost("/reconciliation/{id:guid}/resolve", async (Guid id, ResolveRequest r, ClaimsPrincipal u, Db db, AuditWriter audit, CancellationToken ct) =>
+        {
+            if (!u.IsInRole(Roles.Approver) && !u.IsInRole(Roles.IntegrationOperator) && !u.IsInRole(Roles.LabManager)) return Results.Forbid();
+            if (string.IsNullOrWhiteSpace(r.Reason)) return Results.BadRequest(new { error = "reason required" });
+            var n = await db.InTransactionAsync(async (c, t) =>
+            {
+                var changed = await c.ExecuteAsync("""
+                    UPDATE platform.reconciliation_item SET resolved_at=now(), resolved_by=@user, resolution=@reason WHERE id=@id AND resolved_at IS NULL
+                    """, new { id, user = u.UserName(), reason = r.Reason }, t);
+                if (changed > 0) await audit.WriteAsync(c, t, new AuditEntry(u.UserName(), "reconciliation.resolved", "reconciliation_item", id.ToString(), Reason: r.Reason));
+                return changed;
+            }, ct);
+            return n == 0 ? Results.NotFound() : Results.NoContent();
+        });
+        api.MapPost("/exceptions/{id:guid}/resolve", async (Guid id, ResolveRequest r, ClaimsPrincipal u, ClinicalQueries q, AuditWriter audit, CancellationToken ct) =>
+            await q.ResolveExceptionAsync(id, u.UserName(), r.Reason, audit, ct) == 0 ? Results.NotFound() : Results.NoContent())
+            .RequireAuthorization(Roles.Approver);
+    }
+}

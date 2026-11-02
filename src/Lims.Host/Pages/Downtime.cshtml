@@ -1,0 +1,29 @@
+@page
+@model Lims.Host.Pages.DowntimeModel
+@{ ViewData["Title"] = "HMIS downtime"; }
+<h1>HMIS downtime registration</h1>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+<p>Use only while the HMIS is unavailable. Results can be reviewed and approved but are held from delivery until the DT- order is linked to the real HMIS order.</p>
+@if (User.IsInRole(Roles.Technologist))
+{
+<form method="post" asp-page-handler="Register">
+  <p><input name="mrn" placeholder="HMIS MRN (or TEMP-...)" required>
+     <input name="givenName" placeholder="Given name"> <input name="familyName" placeholder="Family name">
+     <select name="sex"><option value="">Sex</option><option>F</option><option>M</option></select>
+     <input name="birthDate" type="date"></p>
+  <p><input name="tests" placeholder="Test codes, comma separated (TSH,FT4)" required size="40">
+     <select name="priority"><option>routine</option><option>stat</option></select>
+     <button>Register downtime order</button></p>
+</form>
+}
+<h2>Unlinked downtime orders</h2>
+<table>
+<tr><th>DT order</th><th>Patient</th><th>Tests</th><th>Created</th><th></th></tr>
+@foreach (var o in Model.Unlinked)
+{
+  <tr><td>@o.HmisOrderId</td><td>@o.PatientName (@o.Mrn)</td><td>@o.Tests</td><td>@o.CreatedAt.ToString("u")</td>
+  <td>@if (User.IsInRole(Roles.Approver)) {
+    <form method="post" asp-page-handler="Link" class="inline"><input type="hidden" name="orderId" value="@o.OrderId">
+      <input name="hmisOrderId" placeholder="Real HMIS order ID" required><input name="reason" placeholder="Reason" required><button>Link</button></form> }</td></tr>
+}
+</table>
