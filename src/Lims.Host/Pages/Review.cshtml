@@ -1,0 +1,40 @@
+@page
+@model Lims.Host.Pages.ReviewModel
+@{ ViewData["Title"] = "Result review"; }
+<h1>Result review and release</h1>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+<table>
+<tr><th>Accession</th><th>Patient</th><th>Test</th><th>Value</th><th>Ref</th><th>Flags</th><th>State</th><th></th></tr>
+@foreach (var r in Model.Rows)
+{
+  <tr>
+    <td>@r.Accession @(r.Priority == "stat" ? "STAT" : "")</td>
+    <td>@r.PatientName<br><small>MRN @r.Mrn</small></td>
+    <td>@r.TestCode @(r.Version > 1 ? $"(v{r.Version})" : "")</td>
+    <td class="@(r.IsCritical ? "critical" : "")">@r.ValueText @r.Units @(r.IsCritical ? "CRITICAL" : "")</td>
+    <td>@r.ReferenceRange</td>
+    <td>@r.AbnormalFlag @string.Join(" ", r.InstrumentFlags) @(r.FlagMismatch ? "(flag differs from instrument)" : "")</td>
+    <td><span class="badge @(r.Status == "received" ? "Received" : "Reviewed")">@(r.Status == "received" ? "Received" : "Reviewed")</span></td>
+    <td>
+      @if (r.Status == "received" && User.IsInRole(Roles.Technologist))
+      {
+        <form method="post" asp-page-handler="Review" class="inline"><input type="hidden" name="id" value="@r.ResultId"><button>Review</button></form>
+      }
+      @if (User.IsInRole(Roles.Approver))
+      {
+        <form method="post" asp-page-handler="Approve" class="inline">
+          <input type="hidden" name="id" value="@r.ResultId">
+          @if (r.IsCritical)
+          {
+            <input name="notifiedPerson" placeholder="Notified (name)" required>
+            <select name="method"><option>phone</option><option>in person</option></select>
+            <label><input type="checkbox" name="readBack" value="true" required> read-back done</label>
+          }
+          <button>Approve</button>
+        </form>
+        <form method="post" asp-page-handler="Reject" class="inline"><input type="hidden" name="id" value="@r.ResultId"><input name="reason" placeholder="Reason" required><button>Reject / rerun</button></form>
+      }
+    </td>
+  </tr>
+}
+</table>

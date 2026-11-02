@@ -1,0 +1,19 @@
+@page
+@model Lims.Host.Pages.IndexModel
+@{ ViewData["Title"] = "Integration health"; }
+<h1>Integration health</h1>
+<h2>Analyzer links</h2>
+<table>
+<tr><th>Instrument</th><th>State</th><th>Last message</th><th>Messages today</th><th>NAKs</th><th>Checksum errors</th><th>Incomplete</th><th>Last error</th></tr>
+@foreach (var l in Model.Links)
+{
+  <tr><td>@l.InstrumentId @(l.Paused ? "(paused)" : "")</td><td>@l.State</td><td>@l.LastMessageAt</td><td>@l.MessagesToday</td><td>@l.NaksSent</td><td>@l.ChecksumErrors</td><td>@l.IncompleteMessages</td><td>@l.LastError</td></tr>
+}
+</table>
+<p><small>All analyzer interfaces are DOCUMENTED from vendor manuals and NOT interface-tested on the installed instruments.</small></p>
+<h2>HMIS</h2>
+<p>Last poll: @(Model.Hmis.LastPollAt?.ToString("u") ?? "never") @if (Model.Hmis.LastPollError is not null) { <span class="err">(@Model.Hmis.LastPollError)</span> }<br>
+Last confirmed delivery: @(Model.Hmis.LastDeliveryAt?.ToString("u") ?? "none")<br>
+Circuit: @(Model.Hmis.CircuitOpen ? "OPEN" : "closed")</p>
+<h2>Queues</h2>
+<table>@foreach (var kv in Model.Queues) { <tr><th>@kv.Key</th><td>@kv.Value</td></tr> }</table>

@@ -1,0 +1,17 @@
+@page
+@model Lims.Host.Pages.LoginModel
+@{ ViewData["Title"] = "Sign in"; }
+<h1>Sign in</h1>
+@if (Model.Error is not null) { <p class="err">@Model.Error</p> }
+@if (Model.EnrollSecret is not null)
+{
+  <p>Your role needs a second factor. Add this key to an authenticator app (TOTP, 6 digits, 30 seconds), then enter the code.</p>
+  <p><code>@Model.EnrollSecret</code></p>
+  <p><small>otpauth://totp/LIMS:@Model.Username?secret=@Model.EnrollSecret&amp;issuer=LIMS</small></p>
+}
+<form method="post">
+  <p><label>Username<br><input name="Username" value="@Model.Username" autocomplete="username" required></label></p>
+  <p><label>Password<br><input name="Password" type="password" autocomplete="current-password" required></label></p>
+  @if (Model.ShowCode) { <p><label>Authenticator code<br><input name="Code" inputmode="numeric" autocomplete="one-time-code"></label></p> }
+  <button type="submit">Sign in</button>
+</form>
