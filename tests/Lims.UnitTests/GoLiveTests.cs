@@ -35,7 +35,8 @@ internal static class TestCerts
         req.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));
         using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
         // Round-trip through PFX so the private key is usable by SslStream on every platform.
-        return X509CertificateLoader.LoadPkcs12(cert.Export(X509ContentType.Pfx, "pw"), "pw");
+        // Exportable: on Windows a PFX-loaded key cannot be re-exported otherwise (the HTTPS test writes it back out).
+        return X509CertificateLoader.LoadPkcs12(cert.Export(X509ContentType.Pfx, "pw"), "pw", X509KeyStorageFlags.Exportable);
     }
 }
 
