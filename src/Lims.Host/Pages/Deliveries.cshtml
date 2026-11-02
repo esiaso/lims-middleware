@@ -1,0 +1,12 @@
+@page
+@model Lims.Host.Pages.DeliveriesModel
+@{ ViewData["Title"] = "Deliveries"; }
+<h1>HMIS deliveries</h1>
+<p>"Sent" means the request left the middleware. Only <span class="badge HMIS-confirmed">HMIS-confirmed</span> counts as delivered.</p>
+<table>
+<tr><th>Approved</th><th>Accession</th><th>Test</th><th>Value</th><th>State</th><th>Attempts</th><th>HMIS ref</th><th>Last error</th></tr>
+@foreach (var d in Model.Rows)
+{
+  <tr><td>@d.ApprovedAt.ToString("u")</td><td>@d.Accession</td><td>@d.TestCode</td><td>@d.ValueText</td><td><span class="badge @d.DeliveryState">@d.DeliveryState</span></td><td>@d.Attempts</td><td>@d.HmisRef</td><td>@d.LastError</td></tr>
+}
+</table>

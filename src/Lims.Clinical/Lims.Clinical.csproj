@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lims.Contracts\Lims.Contracts.csproj" />
+    <ProjectReference Include="..\Lims.Platform\Lims.Platform.csproj" />
+    <ProjectReference Include="..\Lims.Messaging\Lims.Messaging.csproj" />
+    <ProjectReference Include="..\Lims.Audit\Lims.Audit.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

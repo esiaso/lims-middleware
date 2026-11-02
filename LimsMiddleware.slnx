@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/sim/">
+    <Project Path="sim/Lims.Sim.E411/Lims.Sim.E411.csproj" />
+    <Project Path="sim/Lims.Sim.Hmis/Lims.Sim.Hmis.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Lims.Audit/Lims.Audit.csproj" />
+    <Project Path="src/Lims.Clinical/Lims.Clinical.csproj" />
+    <Project Path="src/Lims.Contracts/Lims.Contracts.csproj" />
+    <Project Path="src/Lims.Hmis/Lims.Hmis.csproj" />
+    <Project Path="src/Lims.Host/Lims.Host.csproj" />
+    <Project Path="src/Lims.Instruments/Lims.Instruments.csproj" />
+    <Project Path="src/Lims.Messaging/Lims.Messaging.csproj" />
+    <Project Path="src/Lims.Platform/Lims.Platform.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Lims.IntegrationTests/Lims.IntegrationTests.csproj" />
+    <Project Path="tests/Lims.UnitTests/Lims.UnitTests.csproj" />
+  </Folder>
+</Solution>

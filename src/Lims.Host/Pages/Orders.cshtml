@@ -1,0 +1,19 @@
+@page
+@model Lims.Host.Pages.OrdersModel
+@{ ViewData["Title"] = "Orders"; }
+<h1>Orders and registration</h1>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+@if (Model.Labels.Count > 0)
+{
+  <h2>Labels printed</h2>
+  <ul>@foreach (var l in Model.Labels) { <li>@l.Accession (@l.SpecimenType: @string.Join(", ", l.Tests))</li> }</ul>
+}
+<form method="post" asp-page-handler="Accept" class="inline"><input name="accession" placeholder="Scan accession"><button>Accept specimen</button></form>
+<table>
+<tr><th>HMIS order</th><th>Patient</th><th>Priority</th><th>Status</th><th>Tests</th><th></th></tr>
+@foreach (var o in Model.Rows)
+{
+  <tr><td>@o.HmisOrderId @(o.IsDowntime ? "(downtime)" : "")</td><td>@o.PatientName<br><small>MRN @o.Mrn</small></td><td>@o.Priority</td><td>@o.Status</td><td>@o.Tests</td>
+  <td>@if (o.Status is "registered" or "in_progress") { <form method="post" asp-page-handler="Collect" class="inline"><input type="hidden" name="orderId" value="@o.OrderId"><button>Collect and print</button></form> }</td></tr>
+}
+</table>

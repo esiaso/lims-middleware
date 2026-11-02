@@ -1,0 +1,12 @@
+@page
+@model Lims.Host.Pages.ExceptionsModel
+@{ ViewData["Title"] = "Exceptions"; }
+<h1>Exceptions</h1>
+<p>Unmatched barcodes, unmapped codes and quarantined results. None of these reach a patient record automatically.</p>
+<table>
+<tr><th>Received</th><th>Kind</th><th>Instrument</th><th>Sample ID</th><th>Code</th><th>Value</th><th>Reason</th></tr>
+@foreach (var e in Model.Rows)
+{
+  <tr><td>@e.ReceivedAt.ToString("u")</td><td>@e.Kind</td><td>@e.InstrumentId</td><td>@e.SampleId</td><td>@e.TestCode</td><td>@e.RawValue</td><td>@e.Reason</td></tr>
+}
+</table>
