@@ -81,6 +81,8 @@ public static class LimsApp
 
         // Instruments
         s.Configure<InstrumentsOptions>(builder.Configuration.GetSection("Instruments"));
+        s.AddSingleton<Lims.Instruments.Registration.InstrumentDirectory>();
+        s.AddSingleton<Lims.Instruments.Registration.AnalyzerDefinitionService>();
         s.AddSingleton<IInstrumentParserResolver, ParserRegistry>();
         s.AddSingleton<IFrameJournal, PostgresFrameJournal>();
         s.AddSingleton<IHostQueryResponder, InstrumentQueryResponder>();
@@ -167,6 +169,8 @@ public static class LimsApp
     public static async Task InitializeAsync(WebApplication app, CancellationToken ct = default)
     {
         await app.Services.GetRequiredService<Migrator>().MigrateAsync(ct);
+        // Registered analyzers must be known before the inbox processor parses their stored messages.
+        await app.Services.GetRequiredService<Lims.Instruments.Registration.InstrumentDirectory>().RefreshAsync(ct);
         var users = app.Services.GetRequiredService<UserStore>();
         var cfg = app.Configuration.GetSection("Bootstrap");
         if (await users.CountAsync(ct) == 0 && cfg["AdminUsername"] is { Length: > 0 } name && cfg["AdminPassword"] is { Length: > 0 } pw)

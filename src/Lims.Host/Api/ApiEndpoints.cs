@@ -135,6 +135,27 @@ public static class ApiEndpoints
         api.MapPost("/mappings/{id:guid}/approve", async (Guid id, ClaimsPrincipal u, MappingService s, CancellationToken ct) =>
         { await s.ApproveAsync(id, u.UserName(), ct); return Results.NoContent(); }).RequireAuthorization(Roles.LabManager);
 
+        // ------------------------------------------------------------ registered analyzers (Lab manager, maker-checker)
+        api.MapGet("/analyzers", async (bool? history, Lims.Instruments.Registration.AnalyzerDefinitionService s, CancellationToken ct) =>
+            Results.Ok((await s.ListAsync(history ?? false, ct)).Select(r => new
+            {
+                r.Id, r.InstrumentId, r.Version, r.Status, r.Enabled, r.ProposedBy, r.ApprovedBy, r.DisableReason, Definition = r.Parsed,
+            }))).RequireAuthorization(Roles.LabManager);
+        api.MapPost("/analyzers", async (HttpRequest req, ClaimsPrincipal u, Lims.Instruments.Registration.AnalyzerDefinitionService s, CancellationToken ct) =>
+        {
+            // Read with the definition's own JSON options (enums as names, as stored).
+            using var reader = new StreamReader(req.Body);
+            Lims.Instruments.Registration.AnalyzerDefinition d;
+            try { d = Lims.Instruments.Registration.AnalyzerDefinition.FromJson(await reader.ReadToEndAsync(ct)); }
+            catch (System.Text.Json.JsonException ex) { return Results.BadRequest(new { error = ex.Message }); }
+            return Results.Ok(new { definitionId = await s.ProposeAsync(d, u.UserName(), ct) });
+        }).RequireAuthorization(Roles.LabManager);
+        api.MapPost("/analyzers/{id:guid}/approve", async (Guid id, ClaimsPrincipal u, Lims.Instruments.Registration.AnalyzerDefinitionService s, CancellationToken ct) =>
+        { await s.ApproveAsync(id, u.UserName(), ct); return Results.NoContent(); }).RequireAuthorization(Roles.LabManager);
+        api.MapPost("/analyzers/{instrumentId}/disable", async (string instrumentId, ReasonRequest r, ClaimsPrincipal u,
+            Lims.Instruments.Registration.AnalyzerDefinitionService s, CancellationToken ct) =>
+        { await s.DisableAsync(instrumentId, u.UserName(), r.Reason, ct); return Results.NoContent(); }).RequireAuthorization(Roles.LabManager);
+
         // ------------------------------------------------------------ audit (Auditor)
         api.MapGet("/audit/verify", async (AuditVerifier v, CancellationToken ct) => Results.Ok(await v.VerifyAsync(ct))).RequireAuthorization(Roles.Auditor);
         api.MapGet("/audit", async (string? accession, string? correlationId, string? entityId, Db db, CancellationToken ct) =>

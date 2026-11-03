@@ -1,0 +1,142 @@
+@page
+@model Lims.Host.Pages.AnalyzerSetupModel
+@using Lims.Instruments
+@using Lims.Instruments.Generic
+@{ ViewData["Title"] = "Analyzer setup"; var p = Model.Definition.Profile; }
+<h1>Analyzer setup</h1>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+<p>Register an analyzer that has no built-in adapter. It talks ASTM E1381/E1394 or HL7 v2 (MLLP) over TCP or a serial port, and its
+message layout is described below from the vendor's host interface manual. A Lab Manager proposes it; a different Lab Manager approves it,
+and only then does the link start (no service restart). Then propose its test mappings on the <a href="/Configuration">Configuration</a> page.</p>
+<p><strong>A registered analyzer is CONFIGURED, not interface-tested.</strong> It starts as "unverified" and stays so until its site
+verification is signed. Check the layout against messages captured on site (<code>lims-capture</code>) with "Check" before proposing.</p>
+
+<h2>Analyzers in the service configuration</h2>
+<p><small>These use built-in adapters and are changed in appsettings, not here.</small></p>
+<table><tr><th>ID</th><th>Model</th><th>Adapter</th><th>Enabled</th></tr>
+@foreach (var c in Model.Configured) { <tr><td>@c.Id</td><td>@c.Model</td><td>@c.Parser</td><td>@c.Enabled</td></tr> }
+</table>
+
+<h2>Registered analyzers</h2>
+<p>@if (Model.History) { <a href="?history=false">Hide retired versions</a> } else { <a href="?history=true">Show history and roll back</a> }</p>
+<table>
+<tr><th>ID</th><th>v</th><th>Model</th><th>Link</th><th>Status</th><th>Proposed by</th><th>Approved by</th><th></th></tr>
+@foreach (var r in Model.Definitions)
+{
+  var d = r.Parsed;
+  <tr><td>@r.InstrumentId</td><td>@r.Version</td><td>@r.Model @(d.SoftwareVersion is null ? "" : $"({d.SoftwareVersion})")</td><td>@AnalyzerSetupModel.Summary(d)</td>
+  <td>@r.Status@(r.Status == "active" && !r.Enabled ? $" · DISABLED by {r.DisabledBy}: {r.DisableReason}" : "")</td>
+  <td>@r.ProposedBy<br><small>@r.ProposedAt.ToString("u")</small></td><td>@r.ApprovedBy</td>
+  <td><a href="?edit=@r.Id">Edit as new version</a>
+  @if (Model.CanEdit)
+  {
+    if (r.Status == "proposed")
+    {
+      <form method="post" asp-page-handler="Approve" class="inline"><input type="hidden" name="id" value="@r.Id"><button>Approve</button></form>
+      <form method="post" asp-page-handler="Withdraw" class="inline"><input type="hidden" name="id" value="@r.Id"><button>Withdraw</button></form>
+    }
+    if (r.Status == "active" && r.Enabled)
+    {
+      <form method="post" asp-page-handler="Disable" class="inline"><input type="hidden" name="instrumentId" value="@r.InstrumentId"><input name="reason" placeholder="Reason" required size="10"><button>Disable</button></form>
+    }
+    if (r.Status == "active" && !r.Enabled)
+    {
+      <form method="post" asp-page-handler="Copy" class="inline"><input type="hidden" name="id" value="@r.Id"><button>Propose enabling again</button></form>
+    }
+    if (r.Status == "retired")
+    {
+      <form method="post" asp-page-handler="Copy" class="inline"><input type="hidden" name="id" value="@r.Id"><button>Roll back to this</button></form>
+    }
+  }</td></tr>
+}
+</table>
+
+@if (Model.CanEdit)
+{
+<h2>Propose an analyzer</h2>
+@if (Model.Errors.Count > 0) { <div class="err"><p>The definition cannot be used yet:</p><ul>@foreach (var e in Model.Errors) { <li>@e</li> }</ul></div> }
+<form method="post" class="panel" id="analyzer-form">
+  <h3>Identity</h3>
+  <p><label>Analyzer ID <input asp-for="Definition.InstrumentId" placeholder="sysmex-xn-1" required size="16"></label>
+     <label>Model <input asp-for="Definition.Model" placeholder="Sysmex XN-550" required></label>
+     <label>Software version <input asp-for="Definition.SoftwareVersion" size="10"></label>
+     <label>Clock offset from UTC <input asp-for="UtcOffsetText" size="6"></label></p>
+  <p><label>Protocol <select asp-for="Definition.Protocol"><option value="astm">ASTM E1381/E1394</option><option value="hl7">HL7 v2 over MLLP</option></select></label>
+     <label>Worklist <select asp-for="Definition.Profile.Worklist" asp-items="Html.GetEnumSelectList<WorklistMode>()"></select></label>
+     <label>Encoding <select asp-for="Definition.Profile.Encoding">@foreach (var e in GenericAdapterProfile.Encodings) { <option value="@e" selected="@(p.Encoding == e)">@e</option> }</select></label></p>
+  <p><small>Worklist: None = results only (load list); HostQuery = the analyzer asks for a tube's tests; Push = "Resend order" sends the order; Both.</small></p>
+
+  <h3>Connection</h3>
+  <p><label>Mode <select asp-for="Definition.Transport.Mode" asp-items="Html.GetEnumSelectList<TransportMode>()"></select></label>
+     <label>Host or bind address <input asp-for="Definition.Transport.Host" size="14"></label>
+     <label>Port <input asp-for="Definition.Transport.Port" type="number" min="0" max="65535" style="width:6em"></label></p>
+  <p><small>TcpClient: the middleware connects to the analyzer or its serial device server. TcpServer: the analyzer connects to the middleware (bind 0.0.0.0 or one address). Serial: a COM port on this server.</small></p>
+  <p><label>Serial port <input asp-for="Definition.Transport.PortName" placeholder="COM3" size="6"></label>
+     <label>Baud <input asp-for="Definition.Transport.BaudRate" type="number" style="width:6em"></label>
+     <label>Data bits <input asp-for="Definition.Transport.DataBits" type="number" min="5" max="8" style="width:3em"></label>
+     <label>Parity <select asp-for="Definition.Transport.Parity">@foreach (var v in new[] { "None", "Odd", "Even", "Mark", "Space" }) { <option selected="@(Model.Definition.Transport.Parity == v)">@v</option> }</select></label>
+     <label>Stop bits <select asp-for="Definition.Transport.StopBits">@foreach (var v in new[] { "One", "OnePointFive", "Two" }) { <option selected="@(Model.Definition.Transport.StopBits == v)">@v</option> }</select></label>
+     <label>Handshake <select asp-for="Definition.Transport.Handshake">@foreach (var v in new[] { "None", "RequestToSend", "XOnXOff", "RequestToSendXOnXOff" }) { <option selected="@(Model.Definition.Transport.Handshake == v)">@v</option> }</select></label></p>
+
+  <h3>Message layout</h3>
+  <p><small>Positions are written record-field.component, counted from 1 as in the manuals: <code>R-4</code>, <code>R-3.4</code>, <code>OBX-3.1</code>. Leave an optional position blank when the analyzer does not send it. Lists are comma-separated.</small></p>
+  <p><label>Instrument codes that are not results <input asp-for="IgnoredTestCodes" size="30"></label>
+     <label>QC sample ID prefixes <input asp-for="QcSampleIdPrefixes" size="12"></label></p>
+  <p><label>Rerun status values <input asp-for="RerunStatusValues" size="6"></label>
+     <label>Normal flag values <input asp-for="NormalFlagValues" size="6"></label>
+     <label>Timestamp formats <input asp-for="TimestampFormats" size="36"></label></p>
+  <p><label>Host name we send <input asp-for="Definition.Profile.HostName" size="8"></label>
+     <label>Receiver name <input asp-for="Definition.Profile.ReceiverName" size="8"></label>
+     <label>Most tests per order <input asp-for="Definition.Profile.MaxTestsPerOrder" type="number" min="1" max="999" style="width:5em"></label></p>
+
+  <details @(Model.Definition.IsHl7 ? "" : "open")><summary>ASTM E1394 positions (protocol ASTM)</summary>
+  <table>
+  <tr><td>Sample ID</td><td><input asp-for="Definition.Profile.AstmSampleId" size="8"></td><td>fallback</td><td><input asp-for="Definition.Profile.AstmSampleIdFallback" size="8"></td></tr>
+  <tr><td>Test code</td><td><input asp-for="Definition.Profile.AstmTestCode" size="8"></td><td>Value</td><td><input asp-for="Definition.Profile.AstmValue" size="8"></td></tr>
+  <tr><td>Units</td><td><input asp-for="Definition.Profile.AstmUnits" size="8"></td><td>Reference range</td><td><input asp-for="Definition.Profile.AstmReferenceRange" size="8"></td></tr>
+  <tr><td>Abnormal flag</td><td><input asp-for="Definition.Profile.AstmAbnormalFlag" size="8"></td><td>Result status</td><td><input asp-for="Definition.Profile.AstmResultStatus" size="8"></td></tr>
+  <tr><td>Operator</td><td><input asp-for="Definition.Profile.AstmOperator" size="8"></td><td>Completed at</td><td><input asp-for="Definition.Profile.AstmCompletedAt" size="8"></td></tr>
+  <tr><td>QC action code (O-12)</td><td><input asp-for="Definition.Profile.AstmQcActionCode" size="4"></td><td>Query sample ID</td><td><input asp-for="Definition.Profile.AstmQuerySampleId" size="8"></td></tr>
+  <tr><td>Test in an order (O-5)</td><td><input asp-for="Definition.Profile.AstmTestCodeTemplate" size="12"></td><td>Receive / ACK timeout (s), send attempts</td>
+      <td><input asp-for="ReceiveTimeoutSeconds" type="number" min="1" style="width:4em"> <input asp-for="AckTimeoutSeconds" type="number" min="1" style="width:4em"> <input asp-for="Definition.Link.MaxSendAttempts" type="number" min="1" max="20" style="width:4em"></td></tr>
+  </table></details>
+
+  <details @(Model.Definition.IsHl7 ? "open" : "")><summary>HL7 v2 positions (protocol HL7)</summary>
+  <table>
+  <tr><td>Version</td><td><input asp-for="Definition.Profile.Hl7Version" size="6"></td><td>Processing ID Q means QC</td><td><input asp-for="Definition.Profile.Hl7QcWhenProcessingIdQ"></td></tr>
+  <tr><td>Sample ID</td><td><input asp-for="Definition.Profile.Hl7SampleId" size="8"></td><td>fallback</td><td><input asp-for="Definition.Profile.Hl7SampleIdFallback" size="8"></td></tr>
+  <tr><td>Test code</td><td><input asp-for="Definition.Profile.Hl7TestCode" size="8"></td><td>Value</td><td><input asp-for="Definition.Profile.Hl7Value" size="8"></td></tr>
+  <tr><td>Units</td><td><input asp-for="Definition.Profile.Hl7Units" size="8"></td><td>Reference range</td><td><input asp-for="Definition.Profile.Hl7ReferenceRange" size="8"></td></tr>
+  <tr><td>Abnormal flag</td><td><input asp-for="Definition.Profile.Hl7AbnormalFlag" size="8"></td><td>Result status</td><td><input asp-for="Definition.Profile.Hl7ResultStatus" size="8"></td></tr>
+  <tr><td>Operator</td><td><input asp-for="Definition.Profile.Hl7Operator" size="8"></td><td>Completed at</td><td><input asp-for="Definition.Profile.Hl7CompletedAt" size="8"></td></tr>
+  <tr><td>Order query message</td><td><input asp-for="Definition.Profile.Hl7QueryMessage" size="8"></td><td>Query sample ID</td><td><input asp-for="Definition.Profile.Hl7QuerySampleId" size="8"></td></tr>
+  <tr><td>Query reply message</td><td><input asp-for="Definition.Profile.Hl7QueryReplyMessage" size="8"></td><td>Pushed order message</td><td><input asp-for="Definition.Profile.Hl7OrderMessage" size="8"></td></tr>
+  </table></details>
+
+  <h3>Check with a captured message</h3>
+  <p><textarea asp-for="SampleMessage" rows="8" cols="100" placeholder="Paste one message: one record or segment per line"></textarea></p>
+  <p><button asp-page-handler="Check">Check (saves nothing)</button> <button asp-page-handler="Propose">Propose</button></p>
+</form>
+
+@if (Model.Preview is { } pv)
+{
+  <section class="panel" id="preview">
+  <h3>How the message is read</h3>
+  @if (!pv.Success) { <p class="err">Not readable: @pv.Error</p> }
+  @foreach (var m in pv.Messages)
+  {
+    <p><strong>@m.Kind</strong> sample <code>@(m.SampleId ?? "(none)")</code>@(m.Query is { IsCancel: true } ? " · cancel" : "")</p>
+    @if (m.Results.Count > 0)
+    {
+      <table><tr><th>Instrument code</th><th>Value</th><th>Numeric</th><th>Units</th><th>Range</th><th>Flags</th><th>Status</th><th>Rerun</th><th>Completed</th><th>Operator</th></tr>
+      @foreach (var r in m.Results)
+      {
+        <tr><td>@r.InstrumentTestCode</td><td>@r.Comparator@r.RawValue</td><td>@r.NumericValue</td><td>@r.Units</td><td>@r.ReferenceRangeText</td><td>@string.Join(", ", r.InstrumentFlags)</td>
+        <td>@r.ResultStatus</td><td>@(r.IsRerun ? "yes" : "")</td><td>@r.RunAt?.ToString("u")</td><td>@r.OperatorId</td></tr>
+      }
+      </table>
+    }
+  }
+  </section>
+}
+}

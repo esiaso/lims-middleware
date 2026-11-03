@@ -1,4 +1,5 @@
 using Lims.Instruments.Astm;
+using Lims.Instruments.Generic;
 
 namespace Lims.Instruments;
 
@@ -33,9 +34,17 @@ public sealed class InstrumentConfig
     public TimeSpan UtcOffset { get; set; } = TimeSpan.FromHours(3);
     public TransportOptions Transport { get; set; } = new();
     public AstmLinkOptions Link { get; set; } = new();
+    /// <summary>Message layout for the generic adapters (generic.astm, generic.hl7); unused by the built-in ones.</summary>
+    public GenericAdapterProfile Generic { get; set; } = new();
+    /// <summary>The approved analyzer definition this entry came from; null for analyzers listed in appsettings.</summary>
+    public Guid? DefinitionId { get; set; }
+    public int? DefinitionVersion { get; set; }
+    public bool IsRegistered => DefinitionId is not null;
 }
 
 public sealed class InstrumentsOptions
 {
     public List<InstrumentConfig> Instruments { get; set; } = new();
+    /// <summary>How often the link worker looks for analyzers registered, changed or disabled from the screens.</summary>
+    public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromSeconds(30);
 }

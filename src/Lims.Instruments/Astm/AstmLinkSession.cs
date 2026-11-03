@@ -24,7 +24,7 @@ public sealed class LinkHealth
     public string? LastError { get; set; }
     public bool Paused { get; set; }
     public string? PausedBy { get; set; }
-    /// <summary>Queues a host-initiated message (kind, text, correlation id) on the open link; null while disconnected or for HL7 links.</summary>
+    /// <summary>Queues a host-initiated message (kind, text, correlation id) on the open link; null while disconnected, and for HL7 links that do not push orders.</summary>
     [JsonIgnore] public Action<string, string, string>? EnqueueOutbound { get; set; }
 }
 

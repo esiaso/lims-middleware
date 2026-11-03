@@ -114,9 +114,28 @@ Status as of this branch. Section numbers refer to the design document.
   The check now looks before creating, `grants.sql` grants USAGE on `public`, and with pending migrations the service
   says to run `migrate` as `lims_owner` (`DeploymentRolesTests`).
 
+## Registering other analyzers
+
+* Analyzers without a built-in adapter are registered on the **Analyzer setup** screen (and `/api/analyzers`), stored as
+  versioned definitions in `instruments.analyzer_definition` (migration 0006), proposed by one Lab Manager and approved by
+  another. The database refuses self-approval. How-to: `docs/ADDING-ANALYZERS.md`.
+* Generic adapters `generic.astm` and `generic.hl7` read field positions from the definition's message layout. The HL7 link
+  now takes a dialect (BC-5000 or generic) and can push orders; the ASTM link is unchanged.
+* `InstrumentDirectory` merges `appsettings` analyzers with approved definitions. The link worker reloads it every
+  `Instruments:RefreshInterval` (30 s) and at once after an approval or disable, starting, restarting and stopping links
+  without a service restart. It is loaded at startup before the inbox processor runs, so stored messages always find their parser.
+* Registered analyzers are `unverified`. An approved change to a verified one sets `re-verify`.
+* Tests: `GenericAdapterTests` (unit: layouts, QC, queries, replies, validation, the HL7 link with push) and
+  `AnalyzerRegistrationTests` (integration: approval, link start, host query, push, results, disable, rollback, the screen).
+
+**Upgrading an existing install:** stop the service, run `Lims.Host.exe migrate` (adds 0006), run `deploy/sql/grants.sql`
+again so `lims_app` gets the new table, then start the service.
+
 ## Still not built
 
 * Code signing is wired into CI (`docs/CODE-SIGNING.md`) but the build stays unsigned until a certificate is added as a secret.
+* `lims-capture snapshot` replays captures with the generic adapters' default layout only; a flag to load a registered
+  analyzer's definition is not built yet.
 * PowerShell scripts were written for Windows Server 2022 but have only been syntax-reviewed, not run, because no Windows host was available; the MSI is exercised by CI.
 
 ## Open items that block Gate 2

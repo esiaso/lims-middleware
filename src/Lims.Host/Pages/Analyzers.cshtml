@@ -1,13 +1,15 @@
 @page
 @model Lims.Host.Pages.AnalyzersModel
+@using Lims.Instruments
 @{ ViewData["Title"] = "Analyzers"; }
 <h1>Analyzers and worklists</h1>
 @if (Model.Message is not null) { <p class="err">@Model.Message</p> }
-<p><small>Every analyzer interface is DOCUMENTED from the vendor manual and NOT interface-tested on the installed instrument until the site verification is signed off.</small></p>
+<p><small>Every analyzer interface is DOCUMENTED from the vendor manual (built-in adapters) or CONFIGURED by a Lab Manager (registered analyzers), and NOT interface-tested on the installed instrument until the site verification is signed off.
+@if (User.IsInRole(Roles.LabManager)) { <a href="/AnalyzerSetup">Register or change an analyzer</a> }</small></p>
 @foreach (var a in Model.Analyzers)
 {
   <section class="panel">
-  <h2>@a.Config.Id <small>@a.Config.Model · @a.Config.Parser · @a.Verification</small></h2>
+  <h2>@a.Config.Id <small>@a.Config.Model · @a.Config.Parser · @a.Verification@(a.Config.IsRegistered ? $" · registered v{a.Config.DefinitionVersion}" : "")@(a.Config.Enabled ? "" : " · DISABLED")</small></h2>
   <p>Link: <span class="badge">@a.Health.State</span> @(a.Health.Paused ? $"PAUSED by {a.Health.PausedBy}" : "")
      · last message @(a.Health.LastMessageAt?.ToString("u") ?? "none") · @a.Health.MessagesToday today
      @if (a.Health.LastError is not null) { <span class="err">· @a.Health.LastError</span> }</p>
@@ -18,7 +20,7 @@
   @foreach (var w in a.Worklist)
   {
     <tr><td>@w.accession</td><td>@w.initials @w.birth_year</td><td>@w.priority</td><td>@w.tests</td><td>@(w.received_at is DateTime r ? r.ToString("u") : "")</td>
-    <td>@if (a.Config.HostQuery && (User.IsInRole(Roles.Technologist) || User.IsInRole(Roles.IntegrationOperator)))
+    <td>@if ((a.Config.HostQuery || OrderDownload.Supports(a.Config)) && a.Config.Enabled && (User.IsInRole(Roles.Technologist) || User.IsInRole(Roles.IntegrationOperator)))
         { <form method="post" asp-page-handler="Resend" class="inline"><input type="hidden" name="instrumentId" value="@a.Config.Id"><input type="hidden" name="barcode" value="@w.barcode"><button>Resend order</button></form> }</td></tr>
   }
   </table>

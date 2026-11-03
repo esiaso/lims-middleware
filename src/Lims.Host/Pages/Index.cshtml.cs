@@ -12,7 +12,7 @@ using Microsoft.Extensions.Options;
 namespace Lims.Host.Pages;
 
 /// <summary>Integration health (design 8): a tile per link, queues, disk, backup, audit export lag; pause and resume a link.</summary>
-public sealed class IndexModel(LinkHealthRegistry links, HmisHealth hmis, Db db, IOptions<InstrumentsOptions> instruments,
+public sealed class IndexModel(LinkHealthRegistry links, HmisHealth hmis, Db db, Lims.Instruments.Registration.InstrumentDirectory instruments,
     IOptions<BackupStatusOptions> backup, StorageGate storage, AuditWriter audit) : PageModel
 {
     public IReadOnlyList<LinkHealth> Links { get; private set; } = [];
@@ -29,7 +29,7 @@ public sealed class IndexModel(LinkHealthRegistry links, HmisHealth hmis, Db db,
 
     private async Task LoadAsync(CancellationToken ct)
     {
-        Links = instruments.Value.Instruments.Select(i => links.Get(i.Id)).ToList();
+        Links = instruments.All.Select(i => links.Get(i.Id)).ToList();
         await using var conn = await db.OpenAsync(ct);
         Queues = (IDictionary<string, object?>)await conn.QuerySingleAsync("""
             SELECT
@@ -69,7 +69,7 @@ public sealed class IndexModel(LinkHealthRegistry links, HmisHealth hmis, Db db,
     private async Task<IActionResult> SetPausedAsync(string id, bool paused, string reason, CancellationToken ct)
     {
         if (!User.IsInRole(Roles.IntegrationOperator)) return Forbid();
-        if (instruments.Value.Instruments.All(i => i.Id != id)) return NotFound();
+        if (instruments.Find(id) is null) return NotFound();
         if (string.IsNullOrWhiteSpace(reason)) { Message = "A reason is required"; await LoadAsync(ct); return Page(); }
         var h = links.Get(id);
         h.Paused = paused;
