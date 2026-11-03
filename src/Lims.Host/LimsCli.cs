@@ -25,7 +25,8 @@ public static class LimsCli
             {
                 case "protect-secret":
                 {
-                    var secret = (await stdin.ReadLineAsync())?.TrimEnd('\r', '\n');
+                    // Windows PowerShell can prefix piped input with a UTF-8 byte order mark; it is never part of a secret.
+                    var secret = (await stdin.ReadLineAsync())?.TrimStart('\uFEFF').TrimEnd('\r', '\n');
                     if (string.IsNullOrEmpty(secret)) { await stderr.WriteLineAsync("no secret on stdin"); return 1; }
                     await stdout.WriteLineAsync(SecretResolver.Protect(secret, machine: !args.Contains("--user")));
                     return 0;

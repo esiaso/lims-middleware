@@ -65,3 +65,67 @@ jobs:
         with:
           name: msi
           path: installer/**/bin/**/*.msi
+      - run: dotnet publish tools/Lims.Capture -c Release -r win-x64 --self-contained true -o artifacts/publish/lims-capture
+      - name: Build the offline bundle
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem installer -Recurse -Filter *.msi | Select-Object -First 1
+          $version = $msi.BaseName -replace '^LimsMiddleware-(.+)-x64$', '$1'
+          deploy/bundle/build-bundle.ps1 -Msi $msi.FullName -CaptureDir artifacts/publish/lims-capture -Version $version
+      # Windows PowerShell 5.1, as on the server.
+      - name: Install the offline bundle end to end
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = Get-ChildItem artifacts/bundle -Filter *.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath C:\bundle
+          $root = (Get-ChildItem C:\bundle -Directory | Select-Object -First 1).FullName
+          # Stand-in for the hospital certificate, trusted so verify.ps1 can call https://localhost.
+          $cert = New-SelfSignedCertificate -DnsName localhost -CertStoreLocation Cert:\LocalMachine\My -Provider "Microsoft Software Key Storage Provider"
+          $root_store = New-Object Security.Cryptography.X509Certificates.X509Store "Root", "LocalMachine"
+          $root_store.Open("ReadWrite"); $root_store.Add($cert); $root_store.Close()
+          $sec = { param($s) ConvertTo-SecureString $s -AsPlainText -Force }
+          $common = @{
+            DataDir = "C:\LimsBundle"; PgDataDir = "C:\pgdata17"; HttpsPort = 8443; CertThumbprint = $cert.Thumbprint
+            PgSuperPassword = (& $sec "ci-Super-pw-8812"); AdminPassword = (& $sec "ci-admin-password-1")
+            HmisBaseUrl = "http://localhost:5080/api/lab/v1/"; HmisTokenUrl = "http://localhost:5080/oauth/token"
+            HmisClientSecret = (& $sec "ci-client-secret"); HmisWebhookSecret = (& $sec "ci-webhook-secret")
+            HttpsAllowFrom = "10.20.0.0/24"; AnalyzerPorts = 5100; AnalyzerAllowFrom = "10.30.0.0/24"
+            VerifyUrl = "https://localhost:8443"
+          }
+          & "$root\Install-Offline.ps1" @common
+          $settings = Get-Content -Raw "C:\Program Files\LimsMiddleware\appsettings.Local.json"
+          if ($settings -match "ci-|Password=") { throw "a secret was written in plain text" }
+          if ((Invoke-RestMethod https://localhost:8443/health/ready).status -ne "ready") { throw "not ready" }
+          if ((Invoke-WebRequest https://localhost:8443/Login -UseBasicParsing).StatusCode -ne 200) { throw "login page" }
+          if (-not (Get-NetFirewallRule -DisplayName "LIMS Middleware analyzers" -ErrorAction SilentlyContinue)) { throw "firewall rule missing" }
+          # Tampering is refused before anything is installed.
+          Add-Content "$root\scripts\sql\grants.sql" "-- changed"
+          $failed = $false
+          try { & "$root\Install-Offline.ps1" @common } catch { $failed = $_.Exception.Message -match "damaged or was modified" }
+          if (-not $failed) { throw "a modified bundle was not refused" }
+          (Get-Content "$root\scripts\sql\grants.sql" | Select-Object -SkipLast 1) | Set-Content "$root\scripts\sql\grants.sql"
+          # configure.ps1 again (new database passwords), then restart and check.
+          Stop-Service LimsMiddleware
+          $cfg = @{ PgBin = "C:\Program Files\PostgreSQL\17\bin"; DataDir = "C:\LimsBundle"; SqlDir = "$root\scripts\sql"
+                    PgSuperPassword = $common.PgSuperPassword; AdminPassword = $common.AdminPassword; CertThumbprint = $cert.Thumbprint; HttpsPort = 8443 }
+          & "$root\scripts\windows\configure.ps1" @cfg
+          Start-Service LimsMiddleware
+          $deadline = (Get-Date).AddMinutes(2)
+          while ($true) {
+            try { if ((Invoke-RestMethod https://localhost:8443/health/ready -TimeoutSec 5).status -eq "ready") { break } } catch { }
+            if ((Get-Date) -gt $deadline) { throw "not ready after configure.ps1 ran again" }
+            Start-Sleep 3
+          }
+          Write-Host "Offline bundle install, tamper check and reconfigure passed"
+      - name: Service event log on failure
+        if: failure()
+        shell: powershell
+        run: Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='LimsMiddleware'} -MaxEvents 30 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message; exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-bundle
+          path: |
+            artifacts/bundle/*.zip
+            artifacts/bundle/*.zip.sha256
+          retention-days: 30
