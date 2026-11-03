@@ -71,7 +71,7 @@ jobs:
         run: |
           $msi = Get-ChildItem installer -Recurse -Filter *.msi | Select-Object -First 1
           $version = $msi.BaseName -replace '^LimsMiddleware-(.+)-x64$', '$1'
-          deploy/bundle/build-bundle.ps1 -Msi $msi.FullName -CaptureDir artifacts/publish/lims-capture -Version $version -AllowUnpinned
+          deploy/bundle/build-bundle.ps1 -Msi $msi.FullName -CaptureDir artifacts/publish/lims-capture -Version $version
       # Windows PowerShell 5.1, as on the server.
       - name: Install the offline bundle end to end
         shell: powershell

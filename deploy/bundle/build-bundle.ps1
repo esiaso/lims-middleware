@@ -24,6 +24,8 @@ Set-StrictMode -Version 3
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $prereqs = Get-Content -Raw (Join-Path $PSScriptRoot "prereqs.json") | ConvertFrom-Json
 $pg = $prereqs.postgres
+$OutDir = [IO.Path]::GetFullPath($OutDir)
+$CacheDir = [IO.Path]::GetFullPath($CacheDir)
 $name = "LimsMiddleware-$Version-offline"
 $stage = Join-Path $OutDir $name
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
