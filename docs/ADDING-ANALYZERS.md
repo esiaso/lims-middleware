@@ -12,7 +12,8 @@ ASTM or HL7 adapter, which reads the message layout a Lab Manager describes from
 ## Steps
 
 1. **Capture real traffic first.** Use `lims-capture listen` (see `tests/captures/README.md`) to record a few results, a
-   QC run and, if the analyzer uses host query, a query. Anonymize before taking the files off site.
+   QC run and, if the analyzer uses host query, a query. Anonymize before taking the files off site. After approval, commit
+   them under `tests/captures/<analyzer id>/` with the definition so every build replays them.
 2. **Describe the analyzer** on *Analyzer setup* (Lab Manager):
    * Identity: analyzer ID (lower case, for example `sysmex-xn-1`), model, software version, clock offset from UTC.
    * Protocol: ASTM or HL7. Worklist: `None` (results only, load list), `HostQuery` (the analyzer asks for a tube's tests),
@@ -52,7 +53,8 @@ ASTM or HL7 adapter, which reads the message layout a Lab Manager describes from
   ACK to a pushed order is logged, not stored.
 * The reply layouts are generic. Many analyzers expect vendor-specific fields in their replies; confirm with the vendor
   and the captures. An analyzer whose replies cannot be expressed this way needs a built-in adapter.
-* `lims-capture snapshot` replays captures with the generic adapters' default layout only, not a registered profile.
+* `lims-capture snapshot` replays a registered analyzer's captures with its definition: put the definition JSON in
+  `tests/captures/<analyzer id>/definition.json` (see `tests/captures/README.md`).
 
 ## API
 

@@ -20,8 +20,10 @@ const string Usage = """
         Rebuilds messages from DIR/capture.jsonl into DIR/extracted (rx = from the analyzer, tx = to it). For proxy captures.
     lims-capture anonymize SRC DEST --protocol astm|hl7
         Copies the .msg files with patient identity removed and sample IDs replaced consistently. Check the output by eye.
-    lims-capture snapshot  DIR --parser PARSER-ID
+    lims-capture snapshot  DIR [--parser PARSER-ID | --definition FILE]
         Writes NNNN.expected.json beside each .msg: what the parser makes of it today. Review before committing.
+        For an analyzer registered on the Analyzer setup screen, give its definition JSON (GET /api/analyzers); with
+        neither option, DIR/definition.json is used if present, else the parser named by the folder.
     Ctrl+C stops listen and proxy.
     """;
 
@@ -157,7 +159,9 @@ try
         case "snapshot":
         {
             var dir = args[1];
-            var parser = Req("--parser");
+            var parser = Opt("--parser") is { } id ? Replay.Parser(id)
+                : Opt("--definition") is { } def ? Replay.Parser(Replay.LoadDefinition(def))
+                : Replay.ForFolder(dir);
             foreach (var file in Directory.EnumerateFiles(dir, "*.msg").Order())
             {
                 var json = Replay.Snapshot(parser, await File.ReadAllBytesAsync(file));
