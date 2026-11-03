@@ -10,6 +10,7 @@ public static class MessageSources
 public static class InboxKinds
 {
     public const string AstmMessage = "astm.message";
+    public const string Hl7Message = "hl7.message";
     public const string HmisOrder = "hmis.order";
     public const string HmisOrderEvent = "hmis.order.event";
 }

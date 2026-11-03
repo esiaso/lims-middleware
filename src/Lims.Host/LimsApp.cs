@@ -11,6 +11,7 @@ using Lims.Instruments.Astm;
 using Lims.Messaging;
 using Lims.Platform;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 
 namespace Lims.Host;
@@ -77,10 +78,11 @@ public static class LimsApp
         s.Configure<InstrumentsOptions>(builder.Configuration.GetSection("Instruments"));
         s.AddSingleton<IInstrumentParserResolver, ParserRegistry>();
         s.AddSingleton<IFrameJournal, PostgresFrameJournal>();
-        s.AddSingleton<IHostQueryResponder, E411QueryResponder>();
+        s.AddSingleton<IHostQueryResponder, InstrumentQueryResponder>();
+        s.TryAddSingleton(TimeProvider.System);
         s.AddSingleton<LinkHealthRegistry>();
         s.AddSingleton<MappingService>();
-        s.AddHostedService<AstmLinkWorker>();
+        s.AddHostedService<InstrumentLinkWorker>();
 
         // HMIS
         s.Configure<HmisOptions>(builder.Configuration.GetSection("Hmis"));

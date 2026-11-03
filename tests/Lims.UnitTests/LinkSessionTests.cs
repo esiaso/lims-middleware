@@ -26,6 +26,12 @@ internal sealed class FakeJournal : IFrameJournal
         Messages.Enqueue(Encoding.ASCII.GetString(message));
         return Task.FromResult(Guid.NewGuid());
     }
+    public Task<Guid> CommitWholeMessageAsync(string instrumentId, string kind, byte[] message, string correlationId, CancellationToken ct)
+    {
+        if (FailCommits > 0) { FailCommits--; throw new InvalidOperationException("db down"); }
+        Messages.Enqueue(Encoding.UTF8.GetString(message));
+        return Task.FromResult(Guid.NewGuid());
+    }
     public Task MarkIncompleteAsync(string instrumentId, Guid sessionId, CancellationToken ct) { Interlocked.Increment(ref Incomplete); return Task.CompletedTask; }
     public Task RecordOutboundAsync(string instrumentId, string kind, byte[] message, string correlationId, string outcome, CancellationToken ct)
     { Outbound.Enqueue((kind, Encoding.ASCII.GetString(message), outcome)); return Task.CompletedTask; }

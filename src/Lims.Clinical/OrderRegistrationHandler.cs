@@ -67,30 +67,49 @@ public sealed class OrderRegistrationHandler(AuditWriter audit) : IInboxHandler
         foreach (var line in order.Lines)
         {
             var lineCancelled = orderCancelled || string.Equals(line.Status, "cancelled", StringComparison.OrdinalIgnoreCase);
-            var lineRow = await conn.QuerySingleOrDefaultAsync<(Guid Id, string Status)?>(
+            // A panel line has one row per component; all share the HMIS line id.
+            var lineRows = (await conn.QueryAsync<(Guid Id, string Status)>(
                 "SELECT id, status FROM clinical.order_test WHERE order_id=@orderId AND hmis_line_id=@lid FOR UPDATE",
-                new { orderId, lid = line.Id }, tx);
-            if (lineRow is null)
+                new { orderId, lid = line.Id }, tx)).ToList();
+            if (lineRows.Count == 0)
             {
                 if (lineCancelled) continue;
-                await conn.ExecuteAsync("""
-                    INSERT INTO clinical.order_test (id, order_id, hmis_line_id, catalog_code, loinc, status)
-                    VALUES (@id, @orderId, @lid, @code, @loinc, 'pending_specimen')
-                    """, new { id = Guid.CreateVersion7(), orderId, lid = line.Id, code = line.TestCode, loinc = line.Loinc }, tx);
-            }
-            else if (lineCancelled && lineRow.Value.Status != "cancelled")
-            {
-                if (lineRow.Value.Status == "released")
+                var components = await conn.QuerySingleOrDefaultAsync<string[]?>(
+                    "SELECT panel_components FROM clinical.test_catalog WHERE code=@code AND status='active'", new { code = line.TestCode }, tx);
+                if (components is { Length: > 0 })
                 {
-                    // Result already released: an approver must handle it (design 5.4).
-                    await audit.WriteAsync(conn, tx, new AuditEntry(actor, "order_test.cancel_after_release", "order_test", lineRow.Value.Id.ToString(),
-                        PatientId: order.Patient.Mrn, CorrelationId: correlationId, Reason: "HMIS cancelled a line whose result was already released"));
+                    await conn.ExecuteAsync("""
+                        INSERT INTO clinical.order_test (id, order_id, hmis_line_id, catalog_code, loinc, panel_code, status)
+                        SELECT gen_random_uuid(), @orderId, @lid, c.code, c.loinc, @panel, 'pending_specimen'
+                        FROM unnest(@components::text[]) WITH ORDINALITY AS u(code, ord)
+                        JOIN clinical.test_catalog c ON c.code = u.code AND c.status = 'active'
+                        ORDER BY u.ord
+                        """, new { orderId, lid = line.Id, panel = line.TestCode, components }, tx);
                 }
                 else
                 {
-                    await conn.ExecuteAsync("UPDATE clinical.order_test SET status='cancelled' WHERE id=@id", new { id = lineRow.Value.Id }, tx);
-                    await audit.WriteAsync(conn, tx, new AuditEntry(actor, "order_test.cancelled", "order_test", lineRow.Value.Id.ToString(),
-                        PatientId: order.Patient.Mrn, CorrelationId: correlationId));
+                    await conn.ExecuteAsync("""
+                        INSERT INTO clinical.order_test (id, order_id, hmis_line_id, catalog_code, loinc, status)
+                        VALUES (@id, @orderId, @lid, @code, @loinc, 'pending_specimen')
+                        """, new { id = Guid.CreateVersion7(), orderId, lid = line.Id, code = line.TestCode, loinc = line.Loinc }, tx);
+                }
+            }
+            else if (lineCancelled)
+            {
+                foreach (var row in lineRows.Where(r => r.Status != "cancelled"))
+                {
+                    if (row.Status == "released")
+                    {
+                        // Result already released: an approver must handle it (design 5.4).
+                        await audit.WriteAsync(conn, tx, new AuditEntry(actor, "order_test.cancel_after_release", "order_test", row.Id.ToString(),
+                            PatientId: order.Patient.Mrn, CorrelationId: correlationId, Reason: "HMIS cancelled a line whose result was already released"));
+                    }
+                    else
+                    {
+                        await conn.ExecuteAsync("UPDATE clinical.order_test SET status='cancelled' WHERE id=@id", new { id = row.Id }, tx);
+                        await audit.WriteAsync(conn, tx, new AuditEntry(actor, "order_test.cancelled", "order_test", row.Id.ToString(),
+                            PatientId: order.Patient.Mrn, CorrelationId: correlationId));
+                    }
                 }
             }
         }

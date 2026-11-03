@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/sim/">
+    <Project Path="sim/Lims.Sim.Bc5000/Lims.Sim.Bc5000.csproj" />
     <Project Path="sim/Lims.Sim.E411/Lims.Sim.E411.csproj" />
     <Project Path="sim/Lims.Sim.Hmis/Lims.Sim.Hmis.csproj" />
   </Folder>

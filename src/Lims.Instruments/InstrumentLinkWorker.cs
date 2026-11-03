@@ -15,12 +15,12 @@ public sealed class LinkHealthRegistry
     public IReadOnlyCollection<LinkHealth> All => _links.Values.ToList();
 }
 
-/// <summary>One link loop per enabled instrument: open transport, run the ASTM session, reconnect with backoff 1 s to 60 s.</summary>
-public sealed class AstmLinkWorker(
+/// <summary>One link loop per enabled instrument: open transport, run the ASTM or HL7 session, reconnect with backoff 1 s to 60 s.</summary>
+public sealed class InstrumentLinkWorker(
     IOptions<InstrumentsOptions> options, IFrameJournal journal, IHostQueryResponder responder, Db db,
-    LinkHealthRegistry registry, ILoggerFactory loggerFactory) : BackgroundService
+    LinkHealthRegistry registry, ILoggerFactory loggerFactory, TimeProvider time) : BackgroundService
 {
-    private readonly ILogger _logger = loggerFactory.CreateLogger<AstmLinkWorker>();
+    private readonly ILogger _logger = loggerFactory.CreateLogger<InstrumentLinkWorker>();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -73,8 +73,10 @@ public sealed class AstmLinkWorker(
                 {
                     logger.LogInformation("{Instrument}: link open ({Mode})", cfg.Id, cfg.Transport.Mode);
                     delay = TimeSpan.FromSeconds(1);
-                    var session = new AstmLinkSession(cfg.Id, journal, cfg.HostQuery ? responder : null, cfg.Link, health, logger);
-                    await session.RunAsync(stream, ct);
+                    if (ParserRegistry.IsHl7(cfg.Parser))
+                        await new Hl7.Hl7LinkSession(cfg.Id, journal, cfg.HostQuery ? responder : null, health, time, logger).RunAsync(stream, ct);
+                    else
+                        await new AstmLinkSession(cfg.Id, journal, cfg.HostQuery ? responder : null, cfg.Link, health, logger).RunAsync(stream, ct);
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
