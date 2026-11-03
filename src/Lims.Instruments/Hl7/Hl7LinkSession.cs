@@ -60,10 +60,11 @@ public sealed class Hl7LinkSession(
         var controlId = msg?.ControlId ?? "";
         var processingId = msg?.ProcessingId ?? "P";
 
-        if (!await journal.IsAvailableAsync(ct))
+        if (health.Paused || !await journal.IsAvailableAsync(ct))
         {
+            // Paused by an operator, or storage cannot take data: refuse so the analyzer keeps the results (design 7.6).
             health.NaksSent++;
-            logger.LogWarning("{Instrument}: storage unavailable, answering AE", instrumentId);
+            logger.LogWarning("{Instrument}: {Why}, answering AE", instrumentId, health.Paused ? "link paused" : "storage unavailable");
             return new Reply(MindrayBc5000Replies.Ack("AE", controlId, processingId, now, 207, "Application internal error"), null, correlationId);
         }
 

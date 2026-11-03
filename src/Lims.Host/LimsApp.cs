@@ -23,6 +23,8 @@ public static class LimsApp
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             Args = args,
+            // Razor pages are discovered from the application assembly; name it so hosting from another entry point (tests) finds them.
+            ApplicationName = typeof(LimsApp).Assembly.GetName().Name,
             ContentRootPath = AppContext.BaseDirectory,
         });
         // Windows Service on Windows Server 2022 (decision E1); no-op elsewhere. systemd works the same way on Linux.
@@ -50,6 +52,7 @@ public static class LimsApp
         // Audit
         s.AddSingleton<AuditWriter>();
         s.AddSingleton<AuditVerifier>();
+        s.AddSingleton<AuditPackage>();
         s.Configure<AuditExportOptions>(builder.Configuration.GetSection("AuditExport"));
         s.AddHostedService<AuditExporter>();
 
@@ -67,6 +70,8 @@ public static class LimsApp
         s.AddSingleton<IInboxHandler, InstrumentResultHandler>();
         s.AddSingleton<SpecimenService>();
         s.AddSingleton<ResultReviewService>();
+        s.AddSingleton<AutoverificationService>();
+        s.Configure<AutoverificationOptions>(builder.Configuration.GetSection("Autoverification"));
         s.AddSingleton<DowntimeService>();
         s.AddSingleton<CatalogService>();
         s.AddSingleton<ClinicalQueries>();
@@ -82,6 +87,7 @@ public static class LimsApp
         s.TryAddSingleton(TimeProvider.System);
         s.AddSingleton<LinkHealthRegistry>();
         s.AddSingleton<MappingService>();
+        s.AddSingleton<OrderResendService>();
         s.AddHostedService<InstrumentLinkWorker>();
 
         // HMIS
@@ -100,6 +106,7 @@ public static class LimsApp
         s.AddSingleton(builder.Configuration.GetSection("PasswordPolicy").Get<PasswordPolicy>() ?? new PasswordPolicy());
         s.AddSingleton<UserStore>();
         s.AddSingleton<HealthService>();
+        s.Configure<Lims.Host.Api.BackupStatusOptions>(builder.Configuration.GetSection("Backup"));
 
         // Operations: reconciliation (7.7), critical escalation (7.8), disk watch (7.6)
         s.Configure<Lims.Host.Operations.ReconciliationOptions>(builder.Configuration.GetSection("Reconciliation"));

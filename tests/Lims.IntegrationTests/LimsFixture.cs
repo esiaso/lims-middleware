@@ -109,6 +109,7 @@ public sealed class LimsFixture : IAsyncLifetime
                 ["Instruments:Instruments:2:Transport:Port"] = bc5000Port.ToString(),
                 ["AuditExport:FileSinkDirectory"] = Path.Combine(Path.GetTempPath(), DatabaseName),
                 ["CatalogSync:Enabled"] = "false",
+                ["AuditExport:SigningKey"] = "integration-test-signing-key-0123456789abcdef",
                 ["Reconciliation:Interval"] = "01:00:00",
                 ["Reconciliation:CriticalEscalation"] = "00:00:01",
                 ["Housekeeping:Interval"] = "01:00:00",

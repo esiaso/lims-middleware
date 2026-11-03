@@ -100,6 +100,51 @@ public sealed class CatalogService(Db db, AuditWriter audit)
         }, ct);
 
     /// <summary>
+    /// Roll back (design 8): proposes the content of an earlier version as a new version. Like any change it takes effect only
+    /// when a different Lab Manager approves it, so a rollback cannot bypass four-eyes review.
+    /// </summary>
+    public async Task<int> ProposeRollbackAsync(string code, int version, string user, CancellationToken ct)
+    {
+        CatalogEntry entry;
+        await using (var conn = await db.OpenAsync(ct))
+        {
+            var row = await conn.QuerySingleOrDefaultAsync<CatalogVersionRow>("""
+                SELECT code, name, loinc, ucum_unit AS UcumUnit, decimals, ref_low AS RefLow, ref_high AS RefHigh, critical_low AS CriticalLow,
+                       critical_high AS CriticalHigh, specimen_type AS SpecimenType, default_instrument AS DefaultInstrument,
+                       delta_percent AS DeltaPercent, delta_absolute AS DeltaAbsolute, delta_window_days AS DeltaWindowDays,
+                       panel_components AS PanelComponents, status
+                FROM clinical.test_catalog WHERE code=@code AND version=@version
+                """, new { code, version }) ?? throw new WorkflowException("Catalog version not found");
+            if (row.Status == "active") throw new WorkflowException("That version is already active");
+            entry = new CatalogEntry(row.Code, row.Name, row.Loinc, row.UcumUnit, row.Decimals, row.RefLow, row.RefHigh, row.CriticalLow, row.CriticalHigh,
+                row.SpecimenType, row.DefaultInstrument, row.DeltaPercent, row.DeltaAbsolute, row.DeltaWindowDays, row.PanelComponents);
+        }
+        var v = await ProposeAsync(entry, user, ct);
+        await audit.WriteAsync(db, new AuditEntry(user, "catalog.rollback_proposed", "test_catalog", $"{code}:v{v}", Reason: $"restores v{version}"), ct);
+        return v;
+    }
+
+    private sealed class CatalogVersionRow
+    {
+        public string Code { get; init; } = "";
+        public string Name { get; init; } = "";
+        public string? Loinc { get; init; }
+        public string? UcumUnit { get; init; }
+        public int Decimals { get; init; }
+        public decimal? RefLow { get; init; }
+        public decimal? RefHigh { get; init; }
+        public decimal? CriticalLow { get; init; }
+        public decimal? CriticalHigh { get; init; }
+        public string SpecimenType { get; init; } = "serum";
+        public string? DefaultInstrument { get; init; }
+        public decimal? DeltaPercent { get; init; }
+        public decimal? DeltaAbsolute { get; init; }
+        public int DeltaWindowDays { get; init; }
+        public string[]? PanelComponents { get; init; }
+        public string Status { get; init; } = "";
+    }
+
+    /// <summary>
     /// A panel lists active, non-panel catalog tests, each once. Returns the component array to store (null for a plain test).
     /// </summary>
     private static async Task<string[]?> ValidatePanelAsync(Npgsql.NpgsqlConnection conn, Npgsql.NpgsqlTransaction tx, CatalogEntry e)

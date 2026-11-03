@@ -60,15 +60,62 @@ Status as of this branch. Section numbers refer to the design document.
 * **MSI (10.2):** WiX v5 project in `installer/`, built and install-tested on a Windows CI runner. It is **not code-signed**
   yet; signing needs the hospital's or vendor's code-signing certificate, added as a CI secret.
 
+## Full application (PR #3)
+
+* **cobas c 111 adapter:** ASTM parser and TSDWN^REPLY query reply from the c111 Host Interface Manual v2.2. Sample ID is read
+  from O-4 ("SampleID^^Position"); QC is action code Q with sample ID 1000 + control code; result status X is stored empty with
+  "not completed", R (re-transmission) is treated as F so duplicates are caught, I on QC is dropped; C records become alarm flags;
+  calibration uploads are not results. A query for an unknown sample is answered with report type Z.
+* **Mindray BC-5000 adapter:** HL7 v2.3.1 over MLLP (UTF-8). Each message is committed to the inbox before ACK^R01; storage
+  trouble or a paused link is answered AE with error 207 so the analyzer keeps the result. Run information, histograms and
+  scattergrams are not results; IS items with value T become alerts on every parameter of the sample; "*" parameters get an
+  RUO flag. Worklist queries (ORM^O01) are answered with ORR^O02 and Test Mode CBC or CBC+DIFF (DIFF when any differential
+  parameter is ordered). In production the analyzer connects to the middleware (`Transport.Mode = TcpServer`).
+* **Test panels:** a catalog entry can list panel components. An HMIS line for a panel (for example CBC) becomes one order test per
+  component, all with the HMIS line id; each component is resulted, approved and delivered separately on that line with its own
+  LOINC. Cancelling the line cancels every component. Panels are versioned and approved like any catalog change.
+* **Not reportable mappings:** an instrument code mapped as not reportable (for example BC-5000 research parameters the lab does
+  not report) is kept for traceability and closed at once instead of opening an exception.
+* **Screens (design 8):**
+  * Integration health: a tile per link, HMIS, disk and last backup, queue counts linked to their screens, audit export lag,
+    and pause/resume per link (Integration operator, with a reason, audited). Pausing is held in memory, so a restart resumes all links.
+  * Analyzers and worklists: link state and verification status, pending worklist, printable load list (initials and year of
+    birth, audited), last messages as metadata only, QC received today, and "resend order" (c111 and e411 cobas type use the
+    manuals' TSDWN^BATCH download; the BC-5000 pulls its worklist when it reads the tube, so the screen says to rescan).
+  * Specimens: search, timeline from the audit trail, accept, reject with reason, request recollection (the next collection is
+    linked to the old tube), reprint label.
+  * Configuration: history of catalog and mapping versions, and roll back to a retired version (proposed again, needs a second
+    Lab Manager); panel components in the catalog form; autoverification rules.
+  * Audit: instrument and action-type filters; export of every matching event as CSV or JSON in a ZIP with a manifest and an
+    HMAC-SHA256 signature (`AuditExport:SigningKey`), checked with `Lims.Host.exe verify-export FILE.zip --key <secret ref>`.
+* **Autoverification (5.6):** off at install. A Lab Manager proposes a rule per test (optional instrument, limits or the reference
+  range, QC window, validation study document ID); a different Lab Manager enables it; disabling is immediate. A result is released
+  by the rule only when it is the first run, numeric with no comparator, not critical, no flag mismatch, delta check passed, no flags
+  other than N, inside the limits, and the latest QC for that instrument and test inside the window is unflagged. The approval names
+  the rule version (`autoverify:GLU:v1`) and links the rule; skipped results are audited with the reasons. `Autoverification:Suspended`
+  stops all rules at once. The middleware does not run Westgard rules: the QC condition only checks that QC ran and the analyzer did not flag it.
+* **Fix:** Razor pages are now found when the host is started from another entry point (the integration tests); a test signs in
+  and renders every screen.
+
+**Upgrading an existing install:** stop the service, run `Lims.Host.exe migrate` (adds migrations 0004 panels and
+0005 autoverification), run `deploy/sql/grants.sql` again so `lims_app` gets the new table, then start the service.
+
 ## Still not built
 
 * Code signing of the MSI and an offline bundle with PostgreSQL and the .NET prerequisites.
-* cobas c111 and Mindray BC-5000 adapters (later phases).
 * PowerShell scripts were written for Windows Server 2022 but have only been syntax-reviewed, not run, because no Windows host was available; the MSI is exercised by CI.
 
-## Open items that block Gate 2 for the e411
+## Open items that block Gate 2
 
-* Installed software version and whether the cobas or Elecsys protocol variant is configured (4.1).
-* Real traffic captured in listen-only mode, replayed through the parser tests.
-* Cable pinout confirmed on site; serial device server passes the configured handshake.
+For each analyzer (e411, c111, BC-5000), at the site visit:
+
+* Installed software version (and for the e411, whether the cobas or Elecsys protocol variant is configured; design 4.1).
+* Real traffic captured in listen-only mode and replayed through the parser tests.
+* For the c111: whether host query or batch download is configured, and the test codes in use (the manual's numbers are examples).
+* For the BC-5000: the LIS port and connection direction, the exact "no order" worklist reply and accepted Test Mode values (to be
+  confirmed with Mindray), and which parameters the lab reports.
+
+Also:
+
+* e411 and c111: cable pinout confirmed on site; serial device server passes the configured handshake.
 * Agreement with the HMIS team on the lab API in 6.9 (the simulator follows the proposal, not an agreed contract).

@@ -15,7 +15,7 @@ namespace Lims.Clinical;
 /// barcode, apply the active mapping, and create result version 1 in "received". Anything ambiguous is
 /// quarantined with a reason; nothing is dropped silently.
 /// </summary>
-public sealed class InstrumentResultHandler(IInstrumentParserResolver parsers, AuditWriter audit) : IInboxHandler
+public sealed class InstrumentResultHandler(IInstrumentParserResolver parsers, AuditWriter audit, AutoverificationService autoverify) : IInboxHandler
 {
     public static readonly TimeSpan DuplicateWindow = TimeSpan.FromDays(7);
 
@@ -270,6 +270,7 @@ public sealed class InstrumentResultHandler(IInstrumentParserResolver parsers, A
             await audit.WriteAsync(conn, tx, new AuditEntry("system:inbox", "result.received", "result", resultId.ToString(),
                 Accession: specimen.Accession, PatientId: specimen.Mrn, CorrelationId: item.CorrelationId,
                 After: new { code = catalog!.Code, value = value.ValueText, value.Units, version, mapping = mapping.Id, rerun = r.IsRerun }));
+            await autoverify.TryAutoverifyAsync(conn, tx, resultId);
         }
     }
 

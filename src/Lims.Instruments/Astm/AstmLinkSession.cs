@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json.Serialization;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
@@ -22,6 +23,9 @@ public sealed class LinkHealth
     public int SendFailures { get; set; }
     public string? LastError { get; set; }
     public bool Paused { get; set; }
+    public string? PausedBy { get; set; }
+    /// <summary>Queues a host-initiated message (kind, text, correlation id) on the open link; null while disconnected or for HL7 links.</summary>
+    [JsonIgnore] public Action<string, string, string>? EnqueueOutbound { get; set; }
 }
 
 /// <summary>
@@ -46,11 +50,12 @@ public sealed class AstmLinkSession(
         var ch = new ByteChannel(stream);
         health.State = LinkState.Idle;
         health.ConnectedSince = DateTimeOffset.UtcNow;
+        health.EnqueueOutbound = EnqueueOutbound;
         try
         {
             while (!ct.IsCancellationRequested)
             {
-                if (_outbound.TryPeek(out _))
+                if (!health.Paused && _outbound.TryPeek(out _))
                 {
                     await SendPendingAsync(ch, ct);
                     continue;
@@ -64,6 +69,7 @@ public sealed class AstmLinkSession(
         }
         finally
         {
+            health.EnqueueOutbound = null;
             health.State = LinkState.Disconnected;
         }
     }

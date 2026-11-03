@@ -3,15 +3,18 @@
 @{ ViewData["Title"] = "Test catalog and mappings"; }
 <h1>Test catalog and instrument mappings</h1>
 @if (Model.Message is not null) { <p class="err">@Model.Message</p> }
-<p>Changes are proposed, then approved by a different Lab Manager. Every result records the mapping version used.</p>
+<p>Changes are proposed, then approved by a different Lab Manager. Every result records the mapping version used.
+A rollback proposes an earlier version again and needs the same approval.
+@if (Model.History) { <a href="?history=false">Hide retired versions</a> } else { <a href="?history=true">Show history and roll back</a> }</p>
 <h2>Catalog</h2>
 <table>
-<tr><th>Code</th><th>v</th><th>Name</th><th>LOINC</th><th>Unit</th><th>Ref</th><th>Critical</th><th>Delta</th><th>Status</th><th>Source</th><th></th></tr>
+<tr><th>Code</th><th>v</th><th>Name</th><th>LOINC</th><th>Unit</th><th>Ref</th><th>Critical</th><th>Delta</th><th>Panel</th><th>Status</th><th>Source</th><th>Approved by</th><th></th></tr>
 @foreach (var c in Model.Catalog)
 {
   <tr><td>@c.code</td><td>@c.version</td><td>@c.name</td><td>@c.loinc</td><td>@c.ucum_unit</td><td>@c.ref_low - @c.ref_high</td><td>@c.critical_low / @c.critical_high</td>
-  <td>@(c.delta_percent is null && c.delta_absolute is null ? "" : $"{c.delta_percent}% / {c.delta_absolute} in {c.delta_window_days} d")</td><td>@c.status</td><td>@c.source</td>
-  <td>@if ((string)c.status == "proposed" && User.IsInRole(Roles.LabManager)) { <form method="post" asp-page-handler="ApproveCatalog" class="inline"><input type="hidden" name="code" value="@c.code"><button>Approve</button></form> }</td></tr>
+  <td>@(c.delta_percent is null && c.delta_absolute is null ? "" : $"{c.delta_percent}% / {c.delta_absolute} in {c.delta_window_days} d")</td><td>@(c.panel_components is string[] pc ? string.Join(", ", pc) : "")</td><td>@c.status</td><td>@c.source</td><td>@c.approved_by</td>
+  <td>@if ((string)c.status == "proposed" && User.IsInRole(Roles.LabManager)) { <form method="post" asp-page-handler="ApproveCatalog" class="inline"><input type="hidden" name="code" value="@c.code"><button>Approve</button></form> }
+      @if ((string)c.status == "retired" && User.IsInRole(Roles.LabManager)) { <form method="post" asp-page-handler="RollbackCatalog" class="inline"><input type="hidden" name="code" value="@c.code"><input type="hidden" name="version" value="@c.version"><button>Roll back to this</button></form> }</td></tr>
 }
 </table>
 @if (User.IsInRole(Roles.LabManager))
@@ -29,7 +32,8 @@
     <input name="criticalLow" placeholder="Critical low" size="6"> <input name="criticalHigh" placeholder="Critical high" size="6">
     <input name="specimenType" value="serum" size="8"> <input name="instrument" placeholder="Instrument (e411-1)" size="10"><br>
     <input name="deltaPercent" placeholder="Delta %" size="6"> <input name="deltaAbsolute" placeholder="Delta absolute" size="8">
-    <label>window (days) <input name="deltaWindowDays" type="number" value="30" min="1" style="width:5em"></label>
+    <label>window (days) <input name="deltaWindowDays" type="number" value="30" min="1" style="width:5em"></label><br>
+    <input name="panelComponents" placeholder="Panel components (WBC, HGB, PLT) for a panel only" size="40">
     <button>Propose</button>
   </form>
 }
@@ -39,7 +43,8 @@
 @foreach (var m in Model.Mappings)
 {
   <tr><td>@m.instrument_id</td><td>@m.instrument_code</td><td>@m.catalog_code</td><td>@m.version</td><td>@m.result_type</td><td>@m.unit_factor</td><td>@m.instrument_unit</td><td>@m.status</td><td>@m.proposed_by</td><td>@m.approved_by</td>
-  <td>@if ((string)m.status == "proposed" && User.IsInRole(Roles.LabManager)) { <form method="post" asp-page-handler="ApproveMapping" class="inline"><input type="hidden" name="id" value="@m.id"><button>Approve</button></form> }</td></tr>
+  <td>@if ((string)m.status == "proposed" && User.IsInRole(Roles.LabManager)) { <form method="post" asp-page-handler="ApproveMapping" class="inline"><input type="hidden" name="id" value="@m.id"><button>Approve</button></form> }
+      @if ((string)m.status == "retired" && User.IsInRole(Roles.LabManager)) { <form method="post" asp-page-handler="RollbackMapping" class="inline"><input type="hidden" name="id" value="@m.id"><button>Roll back to this</button></form> }</td></tr>
 }
 </table>
 @if (User.IsInRole(Roles.LabManager))
@@ -52,6 +57,36 @@
     <select name="resultType"><option>numeric</option><option>qualitative</option><option>text</option></select>
     <input name="unitFactor" value="1" size="4">
     <input name="instrumentUnit" placeholder="Expected unit (optional)">
+    <button>Propose</button>
+  </form>
+}
+<h2>Autoverification rules</h2>
+<p>Off at install. A rule releases a result without a person only when it is the first run, numeric, inside the limits, not critical,
+with no instrument flags, a passed delta check, and unflagged QC for that test within the window. Every other result waits for review.
+A rule is proposed with its validation study document ID and enabled only when a different Lab Manager approves it; disabling takes effect at once.
+@if (Model.AutoverifySuspended) { <strong class="err">Autoverification is suspended in the service configuration: no rule is applied.</strong> }</p>
+<table>
+<tr><th>Test</th><th>v</th><th>Instrument</th><th>Limits</th><th>QC window</th><th>Validation document</th><th>Status</th><th>Proposed by</th><th>Approved by</th><th>Released</th><th></th></tr>
+@foreach (var r in Model.Rules)
+{
+  <tr><td>@r.catalog_code</td><td>@r.version</td><td>@(r.instrument_id ?? "any")</td><td>@(r.limit_low is null && r.limit_high is null ? "reference range" : $"{r.limit_low} - {r.limit_high}")</td>
+  <td>@r.qc_window_hours h</td><td>@r.validation_document_id</td><td>@r.status @if (r.retire_reason is not null) { <small>(@r.retire_reason)</small> }</td><td>@r.proposed_by</td><td>@r.approved_by</td><td>@r.released</td>
+  <td>@if (User.IsInRole(Roles.LabManager))
+      {
+        if ((string)r.status == "proposed") { <form method="post" asp-page-handler="ApproveRule" class="inline"><input type="hidden" name="id" value="@r.id"><button>Approve and enable</button></form> }
+        if ((string)r.status is "proposed" or "active") { <form method="post" asp-page-handler="DisableRule" class="inline"><input type="hidden" name="id" value="@r.id"><input name="reason" placeholder="Reason" required size="10"><button>Disable</button></form> }
+      }</td></tr>
+}
+</table>
+@if (User.IsInRole(Roles.LabManager))
+{
+  <h3>Propose a rule</h3>
+  <form method="post" asp-page-handler="ProposeRule">
+    <input name="catalogCode" placeholder="Test code (GLU)" required size="8">
+    <input name="instrumentId" placeholder="Instrument (blank: any)" size="12">
+    <input name="limitLow" placeholder="Low limit" size="6"> <input name="limitHigh" placeholder="High limit" size="6">
+    <label>QC window (h) <input name="qcWindowHours" type="number" value="24" min="1" max="168" style="width:4em"></label>
+    <input name="validationDocumentId" placeholder="Validation study document ID" required size="22">
     <button>Propose</button>
   </form>
 }

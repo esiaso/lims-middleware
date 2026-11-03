@@ -20,6 +20,12 @@
   form.inline { display:inline; }
   .err { color:#c62828; }
   input, button, select { font: inherit; padding: .25rem .4rem; }
+  .tiles { display:grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap:.75rem; margin-bottom:1rem; }
+  .tile { border:1px solid var(--line); border-left:6px solid #2e7d32; border-radius:.3rem; padding:.5rem .75rem; }
+  .tile h3 { margin:.1rem 0 .3rem; font-size:1.05em; } .tile p { margin:.2rem 0; }
+  .tile-bad { border-left-color:#c62828; }
+  .panel { border:1px solid var(--line); border-radius:.3rem; padding:.5rem 1rem; margin:1rem 0; }
+  details { margin:.5rem 0; } pre { white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -27,7 +33,7 @@
   <strong>LIMS middleware</strong>
   @if (User.Identity?.IsAuthenticated == true)
   {
-    <a href="/">Health</a><a href="/Orders">Orders</a><a href="/Review">Review</a><a href="/Exceptions">Exceptions</a><a href="/Deliveries">Deliveries</a><a href="/Reconciliation">Reconciliation</a><a href="/Downtime">Downtime</a><a href="/Configuration">Configuration</a><a href="/AuditLog">Audit</a>
+    <a href="/">Health</a><a href="/Orders">Orders</a><a href="/Specimens">Specimens</a><a href="/Analyzers">Analyzers</a><a href="/Review">Review</a><a href="/Exceptions">Exceptions</a><a href="/Deliveries">Deliveries</a><a href="/Reconciliation">Reconciliation</a><a href="/Downtime">Downtime</a><a href="/Configuration">Configuration</a><a href="/AuditLog">Audit</a>
     <span style="margin-left:auto">@User.Identity.Name</span>
     <form method="post" action="/Logout" class="inline"><button type="submit">Sign out</button></form>
   }

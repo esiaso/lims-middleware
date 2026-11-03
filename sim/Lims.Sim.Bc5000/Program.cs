@@ -2,12 +2,12 @@ using System.Net;
 using System.Net.Sockets;
 using Lims.Sim.Bc5000;
 
-// Mindray BC-5000 simulator. It listens on a TCP port and the middleware connects to it (Transport.Mode = TcpClient).
-// The real instrument's TCP role is still to be confirmed on site (design 4.1). Synthetic data only.
+// Mindray BC-5000 simulator. Like the analyzer, it connects to the middleware's LIS port (Transport.Mode = TcpServer).
+// The connection direction is still to be confirmed on site (design 4.1). Synthetic data only.
 //
-//   dotnet run --project sim/Lims.Sim.Bc5000 -- --port 5101 result 261102000427
-//   dotnet run --project sim/Lims.Sim.Bc5000 -- --port 5101 query 261102000427
-var port = 5101;
+//   dotnet run --project sim/Lims.Sim.Bc5000 -- --port 5100 result 261102000427
+//   dotnet run --project sim/Lims.Sim.Bc5000 -- --port 5100 query 261102000427
+var port = 5100;
 var rest = new List<string>();
 for (var i = 0; i < args.Length; i++)
 {
@@ -20,10 +20,8 @@ if (rest.Count < 2)
     return 1;
 }
 
-var listener = new TcpListener(IPAddress.Loopback, port);
-listener.Start();
-Console.WriteLine($"BC-5000 simulator listening on 127.0.0.1:{port}; waiting for the middleware to connect...");
-using var client = await listener.AcceptTcpClientAsync();
+using var client = new TcpClient();
+await client.ConnectAsync(IPAddress.Loopback, port);
 var sim = new Bc5000Simulator(client.GetStream());
 Console.WriteLine("connected");
 

@@ -2,18 +2,45 @@
 @model Lims.Host.Pages.IndexModel
 @{ ViewData["Title"] = "Integration health"; }
 <h1>Integration health</h1>
-<h2>Analyzer links</h2>
-<table>
-<tr><th>Instrument</th><th>State</th><th>Last message</th><th>Messages today</th><th>NAKs</th><th>Checksum errors</th><th>Incomplete</th><th>Last error</th></tr>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+<div class="tiles">
 @foreach (var l in Model.Links)
 {
-  <tr><td>@l.InstrumentId @(l.Paused ? "(paused)" : "")</td><td>@l.State</td><td>@l.LastMessageAt</td><td>@l.MessagesToday</td><td>@l.NaksSent</td><td>@l.ChecksumErrors</td><td>@l.IncompleteMessages</td><td>@l.LastError</td></tr>
+  var bad = l.Paused || l.State == Lims.Instruments.Astm.LinkState.Disconnected;
+  <div class="tile @(bad ? "tile-bad" : "tile-ok")">
+    <h3><a href="/Analyzers">@l.InstrumentId</a></h3>
+    <p><strong>@(l.Paused ? "PAUSED" : l.State.ToString())</strong> @if (l.Paused) { <small>by @l.PausedBy</small> }</p>
+    <p><small>Last message @(l.LastMessageAt?.ToString("u") ?? "none") · @l.MessagesToday today<br>
+    NAKs @l.NaksSent · checksum @l.ChecksumErrors · timeouts @l.Timeouts · incomplete @l.IncompleteMessages · send failures @l.SendFailures</small></p>
+    @if (l.LastError is not null) { <p class="err"><small>@l.LastError</small></p> }
+    @if (User.IsInRole(Roles.IntegrationOperator))
+    {
+      <form method="post" asp-page-handler="@(l.Paused ? "Resume" : "Pause")"><input type="hidden" name="id" value="@l.InstrumentId">
+        <input name="reason" placeholder="Reason" required size="14"><button>@(l.Paused ? "Resume" : "Pause")</button></form>
+    }
+  </div>
 }
-</table>
-<p><small>All analyzer interfaces are DOCUMENTED from vendor manuals and NOT interface-tested on the installed instruments.</small></p>
-<h2>HMIS</h2>
-<p>Last poll: @(Model.Hmis.LastPollAt?.ToString("u") ?? "never") @if (Model.Hmis.LastPollError is not null) { <span class="err">(@Model.Hmis.LastPollError)</span> }<br>
-Last confirmed delivery: @(Model.Hmis.LastDeliveryAt?.ToString("u") ?? "none")<br>
-Circuit: @(Model.Hmis.CircuitOpen ? "OPEN" : "closed")</p>
+  <div class="tile @(Model.Hmis.CircuitOpen || Model.Hmis.LastPollError is not null ? "tile-bad" : "tile-ok")">
+    <h3>HMIS</h3>
+    <p><strong>Circuit @(Model.Hmis.CircuitOpen ? "OPEN" : "closed")</strong></p>
+    <p><small>Last poll @(Model.Hmis.LastPollAt?.ToString("u") ?? "never")<br>Last confirmed delivery @(Model.Hmis.LastDeliveryAt?.ToString("u") ?? "none")</small></p>
+    @if (Model.Hmis.LastPollError is not null) { <p class="err"><small>@Model.Hmis.LastPollError</small></p> }
+  </div>
+  <div class="tile @(Model.AcceptingMessages ? "tile-ok" : "tile-bad")">
+    <h3>Disk</h3>
+    <p><strong>@(Model.DiskFreePercent?.ToString("0.0") ?? "?") % free</strong></p>
+    <p><small>@(Model.AcceptingMessages ? "Accepting analyzer messages" : "Below the storage floor: analyzers are refused")</small></p>
+  </div>
+  <div class="tile @(Model.BackupStale ? "tile-bad" : "tile-ok")">
+    <h3>Backup</h3>
+    <p><strong>@(Model.LastBackupAt?.ToString("u") ?? (Model.BackupConfigured ? "none found" : "not configured"))</strong></p>
+    <p><small>Newest archive in the backup target</small></p>
+  </div>
+</div>
 <h2>Queues</h2>
-<table>@foreach (var kv in Model.Queues) { <tr><th>@kv.Key</th><td>@kv.Value</td></tr> }</table>
+<table>@foreach (var kv in Model.Queues)
+{
+  var link = Lims.Host.Pages.IndexModel.QueueLink(kv.Key);
+  <tr><th>@if (link.Length > 0) { <a href="@link">@kv.Key</a> } else { @kv.Key }</th><td>@kv.Value</td></tr>
+}</table>
+<p><small>All analyzer interfaces are DOCUMENTED from vendor manuals and NOT interface-tested on the installed instruments.</small></p>

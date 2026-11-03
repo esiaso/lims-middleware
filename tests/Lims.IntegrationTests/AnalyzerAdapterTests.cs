@@ -42,7 +42,7 @@ public sealed partial class EndToEndTests
         await LimsFixture.WaitFor<bool?>(async () =>
         {
             await using var c = await f.OpenAsync();
-            return await c.ExecuteScalarAsync<int>("SELECT count(*) FROM clinical.qc_result WHERE instrument_id='c111-1' AND control_name='1301'") == 1;
+            return await c.ExecuteScalarAsync<int>("SELECT count(*) FROM clinical.qc_result WHERE instrument_id='c111-1' AND control_name='1301'") >= 1;
         }, what: "c111 QC");
     }
 

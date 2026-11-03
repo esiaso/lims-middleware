@@ -44,8 +44,11 @@ public sealed class SpecimenService(Db db, AuditWriter audit, IClock clock)
                 var (accession, barcode) = await NextAccessionAsync(conn, tx, DateOnly.FromDateTime(now.UtcDateTime.AddHours(3)));
                 var specimenId = Guid.CreateVersion7();
                 await conn.ExecuteAsync("""
-                    INSERT INTO clinical.specimen (id, accession, barcode, order_id, specimen_type, status, collected_at, collected_by)
-                    VALUES (@specimenId, @accession, @barcode, @orderId, @type, 'collected', @now, @user)
+                    INSERT INTO clinical.specimen (id, accession, barcode, order_id, specimen_type, status, collected_at, collected_by, recollection_of)
+                    VALUES (@specimenId, @accession, @barcode, @orderId, @type, 'collected', @now, @user,
+                        (SELECT id FROM clinical.specimen WHERE order_id=@orderId AND specimen_type=@type AND status='recollection_requested'
+                         AND NOT EXISTS (SELECT 1 FROM clinical.specimen n WHERE n.recollection_of = clinical.specimen.id)
+                         ORDER BY created_at DESC LIMIT 1))
                     """, new { specimenId, accession, barcode, orderId, type = group.Key, now = now.UtcDateTime, user }, tx);
                 foreach (var t in group)
                 {
@@ -112,6 +115,32 @@ public sealed class SpecimenService(Db db, AuditWriter audit, IClock clock)
             }
             await audit.WriteAsync(conn, tx, new AuditEntry(user, $"specimen.{to}", "specimen", s.Id.ToString(), Accession: s.Accession,
                 Reason: reason, Before: new { status = s.Status }, After: new { status = to }));
+        }, ct);
+
+    /// <summary>
+    /// Asks the ward for a new tube (design 5.4). The old specimen keeps its history; tests without a released result go back to
+    /// pending specimen, and the next collection for the order is linked to this one through recollection_of.
+    /// </summary>
+    public Task RequestRecollectionAsync(string accessionOrBarcode, string user, string reason, CancellationToken ct) =>
+        db.InTransactionAsync(async (conn, tx) =>
+        {
+            if (string.IsNullOrWhiteSpace(reason)) throw new WorkflowException("A reason is required");
+            var barcode = AccessionNumber.NormalizeBarcode(accessionOrBarcode) ?? throw new WorkflowException("Not a valid accession (check digit)");
+            var sp = await conn.QuerySingleOrDefaultAsync<(Guid Id, string Status, string Accession)?>(
+                "SELECT id, status, accession FROM clinical.specimen WHERE barcode=@barcode FOR UPDATE", new { barcode }, tx)
+                ?? throw new WorkflowException("Specimen not found");
+            if (sp.Status is not ("collected" or "received" or "accepted" or "rejected" or "on_instrument"))
+                throw new WorkflowException($"Cannot request recollection for a specimen that is {sp.Status}");
+            await conn.ExecuteAsync("UPDATE clinical.specimen SET status='recollection_requested' WHERE id=@id", new { id = sp.Id }, tx);
+            await conn.ExecuteAsync("""
+                UPDATE clinical.order_test SET status='pending_specimen'
+                WHERE id IN (SELECT order_test_id FROM clinical.specimen_test WHERE specimen_id=@id)
+                  AND status IN ('ordered','pending_specimen','pending_at_instrument','resulted')
+                  AND NOT EXISTS (SELECT 1 FROM clinical.specimen_test st JOIN clinical.result r ON r.specimen_test_id=st.id
+                                  WHERE st.order_test_id=clinical.order_test.id AND r.status='approved')
+                """, new { id = sp.Id }, tx);
+            await audit.WriteAsync(conn, tx, new AuditEntry(user, "specimen.recollection_requested", "specimen", sp.Id.ToString(), Accession: sp.Accession,
+                Reason: reason, Before: new { status = sp.Status }, After: new { status = "recollection_requested" }));
         }, ct);
 
     /// <summary>Reprint reuses the same accession and is audited (design 5.5).</summary>
