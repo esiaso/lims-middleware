@@ -50,6 +50,12 @@ Status as of this branch. Section numbers refer to the design document.
 * **Catalog sync:** daily `GET /test-catalog`; changes become proposed catalog versions that a Lab Manager approves (not the proposer).
 * **Screens:** configuration (instruments, mappings, catalog approvals, certificate), audit log search and chain verify (Auditor),
   downtime registration and linking, reconciliation, exception resolve with reason.
+* **Delta checks:** per test, a percent and/or absolute limit and a window (default 30 days) in the catalog. A numeric
+  result that moves more than the limit from the patient's latest released result is flagged (`result.delta_flagged`),
+  shown on the review screen, and needs a review comment or the approver's confirmation before approval.
+  No limits are set by default: the Lab Manager enters them per test on the configuration screen.
+* **Catalog editing:** the configuration screen proposes a new catalog version (ranges, critical and delta limits) for a
+  second Lab Manager to approve, alongside the existing mapping proposal form.
 * **Backup (10.4):** `deploy/windows/backup.ps1`, `restore-test.ps1` and `docs/BACKUP-RUNBOOK.md` (WAL archiving for the 15-minute RPO).
 * **MSI (10.2):** WiX v5 project in `installer/`, built and install-tested on a Windows CI runner. It is **not code-signed**
   yet; signing needs the hospital's or vendor's code-signing certificate, added as a CI secret.
@@ -57,8 +63,6 @@ Status as of this branch. Section numbers refer to the design document.
 ## Still not built
 
 * Code signing of the MSI and an offline bundle with PostgreSQL and the .NET prerequisites.
-* Delta checks against the patient's previous result.
-* Dedicated mapping editor screen (mappings are proposed and approved through the API and the configuration screen lists them).
 * cobas c111 and Mindray BC-5000 adapters (later phases).
 * PowerShell scripts were written for Windows Server 2022 but have only been syntax-reviewed, not run, because no Windows host was available; the MSI is exercised by CI.
 

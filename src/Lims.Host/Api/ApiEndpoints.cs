@@ -13,7 +13,7 @@ using Microsoft.Extensions.Options;
 namespace Lims.Host.Api;
 
 public sealed record RejectSpecimenRequest(string Reason);
-public sealed record ApproveRequest(CriticalNotification? Critical);
+public sealed record ApproveRequest(CriticalNotification? Critical, string? DeltaComment = null);
 public sealed record ReasonRequest(string Reason);
 public sealed record CommentRequest(string? Comment);
 public sealed record LinkDowntimeRequest(string HmisOrderId, string Reason);
@@ -89,7 +89,7 @@ public static class ApiEndpoints
         api.MapPost("/results/{id:guid}/approve", async (Guid id, ApproveRequest r, ClaimsPrincipal u, ResultReviewService s, IClock clock, CancellationToken ct) =>
         {
             if (!SignedInRecently(u, clock)) return Results.Json(new { error = "sign in again to approve" }, statusCode: 403);
-            return Results.Ok(new { approvalId = await s.ApproveAsync(id, u.UserName(), r.Critical, ct) });
+            return Results.Ok(new { approvalId = await s.ApproveAsync(id, u.UserName(), r.Critical, ct, r.DeltaComment) });
         }).RequireAuthorization(Roles.Approver);
         api.MapPost("/results/{id:guid}/reject", async (Guid id, ReasonRequest r, ClaimsPrincipal u, ResultReviewService s, CancellationToken ct) =>
         { await s.RejectAsync(id, u.UserName(), r.Reason, ct); return Results.NoContent(); }).RequireAuthorization(Roles.Approver);

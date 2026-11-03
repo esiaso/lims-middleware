@@ -5,7 +5,8 @@ using Lims.Platform;
 namespace Lims.Clinical;
 
 public sealed record CatalogEntry(string Code, string Name, string? Loinc, string? UcumUnit, int Decimals, decimal? RefLow, decimal? RefHigh,
-    decimal? CriticalLow, decimal? CriticalHigh, string SpecimenType, string? DefaultInstrument);
+    decimal? CriticalLow, decimal? CriticalHigh, string SpecimenType, string? DefaultInstrument,
+    decimal? DeltaPercent = null, decimal? DeltaAbsolute = null, int DeltaWindowDays = 30);
 
 /// <summary>Versioned test catalog (LOINC only; SHA coding stays in the HMIS, decision E9).</summary>
 public sealed class CatalogService(Db db, AuditWriter audit)
@@ -17,10 +18,11 @@ public sealed class CatalogService(Db db, AuditWriter audit)
             await conn.ExecuteAsync("UPDATE clinical.test_catalog SET status='retired' WHERE code=@Code AND status='active'", e, tx);
             await conn.ExecuteAsync("""
                 INSERT INTO clinical.test_catalog (code, version, name, loinc, ucum_unit, decimals, ref_low, ref_high, critical_low, critical_high,
-                    specimen_type, default_instrument, status, approved_by)
+                    specimen_type, default_instrument, delta_percent, delta_absolute, delta_window_days, status, approved_by)
                 VALUES (@Code, @version, @Name, @Loinc, @UcumUnit, @Decimals, @RefLow, @RefHigh, @CriticalLow, @CriticalHigh,
-                    @SpecimenType, @DefaultInstrument, 'active', @user)
-                """, new { e.Code, version, e.Name, e.Loinc, e.UcumUnit, e.Decimals, e.RefLow, e.RefHigh, e.CriticalLow, e.CriticalHigh, e.SpecimenType, e.DefaultInstrument, user }, tx);
+                    @SpecimenType, @DefaultInstrument, @DeltaPercent, @DeltaAbsolute, @DeltaWindowDays, 'active', @user)
+                """, new { e.Code, version, e.Name, e.Loinc, e.UcumUnit, e.Decimals, e.RefLow, e.RefHigh, e.CriticalLow, e.CriticalHigh, e.SpecimenType, e.DefaultInstrument,
+                    e.DeltaPercent, e.DeltaAbsolute, e.DeltaWindowDays, user }, tx);
             await audit.WriteAsync(conn, tx, new AuditEntry(user, "catalog.published", "test_catalog", $"{e.Code}:v{version}", After: e));
             return version;
         }, ct);
@@ -42,15 +44,39 @@ public sealed class CatalogService(Db db, AuditWriter audit)
             var version = await conn.ExecuteScalarAsync<int>("SELECT COALESCE(max(version),0)+1 FROM clinical.test_catalog WHERE code=@code", new { code }, tx);
             await conn.ExecuteAsync("""
                 INSERT INTO clinical.test_catalog (code, version, name, loinc, ucum_unit, decimals, ref_low, ref_high, critical_low, critical_high,
-                    specimen_type, default_instrument, tat_minutes, status, source, proposed_by)
+                    specimen_type, default_instrument, tat_minutes, delta_percent, delta_absolute, delta_window_days, status, source, proposed_by)
                 SELECT @code, @version, @name, @loinc, @unit,
                        COALESCE(a.decimals, 2), a.ref_low, a.ref_high, a.critical_low, a.critical_high,
-                       COALESCE(a.specimen_type, 'serum'), a.default_instrument, COALESCE(a.tat_minutes, 240), 'proposed', 'hmis', 'system:catalog-sync'
+                       COALESCE(a.specimen_type, 'serum'), a.default_instrument, COALESCE(a.tat_minutes, 240),
+                       a.delta_percent, a.delta_absolute, COALESCE(a.delta_window_days, 30), 'proposed', 'hmis', 'system:catalog-sync'
                 FROM (SELECT 1) one LEFT JOIN clinical.test_catalog a ON a.code=@code AND a.status='active'
                 """, new { code, version, name, loinc, unit }, tx);
             await audit.WriteAsync(conn, tx, new AuditEntry("system:catalog-sync", "catalog.proposed", "test_catalog", $"{code}:v{version}",
                 Before: current is null ? null : new { current.Name, current.Loinc, current.UcumUnit }, After: new { name, loinc, unit }));
             return true;
+        }, ct);
+
+    /// <summary>
+    /// A Lab Manager proposes a new catalog version (ranges, critical limits, delta limits). It takes effect only when a
+    /// different Lab Manager approves it. Replaces any earlier unapproved proposal for the same test.
+    /// </summary>
+    public Task<int> ProposeAsync(CatalogEntry e, string user, CancellationToken ct) =>
+        db.InTransactionAsync(async (conn, tx) =>
+        {
+            if (string.IsNullOrWhiteSpace(e.Code) || string.IsNullOrWhiteSpace(e.Name)) throw new WorkflowException("Code and name are required");
+            if (e.RefLow > e.RefHigh || e.CriticalLow > e.CriticalHigh) throw new WorkflowException("Low limit is above high limit");
+            await conn.ExecuteAsync("DELETE FROM clinical.test_catalog WHERE code=@Code AND status='proposed'", e, tx);
+            var version = await conn.ExecuteScalarAsync<int>("SELECT COALESCE(max(version),0)+1 FROM clinical.test_catalog WHERE code=@Code", e, tx);
+            await conn.ExecuteAsync("""
+                INSERT INTO clinical.test_catalog (code, version, name, loinc, ucum_unit, decimals, ref_low, ref_high, critical_low, critical_high,
+                    specimen_type, default_instrument, delta_percent, delta_absolute, delta_window_days, tat_minutes, status, source, proposed_by)
+                SELECT @Code, @version, @Name, @Loinc, @UcumUnit, @Decimals, @RefLow, @RefHigh, @CriticalLow, @CriticalHigh,
+                    @SpecimenType, @DefaultInstrument, @DeltaPercent, @DeltaAbsolute, @DeltaWindowDays,
+                    COALESCE((SELECT tat_minutes FROM clinical.test_catalog WHERE code=@Code AND status='active'), 240), 'proposed', 'manual', @user
+                """, new { e.Code, version, e.Name, e.Loinc, e.UcumUnit, e.Decimals, e.RefLow, e.RefHigh, e.CriticalLow, e.CriticalHigh, e.SpecimenType,
+                    e.DefaultInstrument, e.DeltaPercent, e.DeltaAbsolute, e.DeltaWindowDays, user }, tx);
+            await audit.WriteAsync(conn, tx, new AuditEntry(user, "catalog.proposed", "test_catalog", $"{e.Code}:v{version}", After: e));
+            return version;
         }, ct);
 
     /// <summary>Lab Manager approves a proposed catalog version; the previous active version is retired.</summary>

@@ -30,6 +30,15 @@ public sealed class ConfigurationModel(Db db, CatalogService catalog, MappingSer
     }
 
     public Task<IActionResult> OnPostApproveCatalogAsync(string code, CancellationToken ct) => Run(() => catalog.ApproveAsync(code, User.Identity!.Name!, ct), ct);
+    public Task<IActionResult> OnPostProposeCatalogAsync(string code, string name, string? loinc, string? unit, int decimals,
+        decimal? refLow, decimal? refHigh, decimal? criticalLow, decimal? criticalHigh, string specimenType, string? instrument,
+        decimal? deltaPercent, decimal? deltaAbsolute, int deltaWindowDays, CancellationToken ct) =>
+        Run(() => catalog.ProposeAsync(new CatalogEntry(code.Trim().ToUpperInvariant(), name.Trim(), Blank(loinc), Blank(unit), decimals,
+            refLow, refHigh, criticalLow, criticalHigh, string.IsNullOrWhiteSpace(specimenType) ? "serum" : specimenType, Blank(instrument),
+            deltaPercent, deltaAbsolute, deltaWindowDays <= 0 ? 30 : deltaWindowDays), User.Identity!.Name!, ct), ct);
+
+    private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
     public Task<IActionResult> OnPostApproveMappingAsync(Guid id, CancellationToken ct) => Run(() => mappings.ApproveAsync(id, User.Identity!.Name!, ct), ct);
     public Task<IActionResult> OnPostProposeMappingAsync(string instrumentId, string instrumentCode, string catalogCode, string resultType,
         decimal unitFactor, string? instrumentUnit, CancellationToken ct) =>

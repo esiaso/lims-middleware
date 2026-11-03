@@ -19,6 +19,8 @@ public sealed class ReviewQueueRow
     public string[] InstrumentFlags { get; init; } = default!;
     public bool FlagMismatch { get; init; }
     public bool IsCritical { get; init; }
+    public bool DeltaFlag { get; init; }
+    public decimal? DeltaPreviousValue { get; init; }
     public string Priority { get; init; } = default!;
     public DateTime CreatedAt { get; init; }
     public string? ChangeReason { get; init; }
@@ -73,7 +75,7 @@ public sealed class ClinicalQueries(Db db)
             SELECT r.id AS ResultId, r.version, r.status, s.accession, p.mrn, concat_ws(', ', p.family_name, p.given_name) AS PatientName,
                    ot.catalog_code AS TestCode, r.value_text AS ValueText, r.units, r.reference_range AS ReferenceRange,
                    r.abnormal_flag AS AbnormalFlag, r.instrument_flags AS InstrumentFlags, r.flag_mismatch AS FlagMismatch,
-                   r.is_critical AS IsCritical, o.priority, r.created_at AS CreatedAt, r.change_reason AS ChangeReason
+                   r.is_critical AS IsCritical, r.delta_flag AS DeltaFlag, r.delta_previous_value AS DeltaPreviousValue, o.priority, r.created_at AS CreatedAt, r.change_reason AS ChangeReason
             FROM clinical.result r
             JOIN clinical.specimen_test st ON st.id=r.specimen_test_id
             JOIN clinical.specimen s ON s.id=st.specimen_id

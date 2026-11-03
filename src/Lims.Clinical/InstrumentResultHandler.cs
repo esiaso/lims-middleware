@@ -253,6 +253,11 @@ public sealed class InstrumentResultHandler(IInstrumentParserResolver parsers, A
                 UPDATE clinical.order_test SET status='resulted' WHERE id=(SELECT order_test_id FROM clinical.specimen_test WHERE id=@st)
                   AND status IN ('pending_at_instrument','pending_specimen','ordered','resulted')
                 """, new { st = specimenTestId }, tx);
+            var delta = await DeltaCheck.ApplyAsync(conn, tx, resultId);
+            if (delta.Flagged)
+                await audit.WriteAsync(conn, tx, new AuditEntry("system:inbox", "result.delta_flagged", "result", resultId.ToString(),
+                    Accession: specimen.Accession, PatientId: specimen.Mrn, CorrelationId: item.CorrelationId,
+                    After: new { value = value.ValueText, previous = delta.PreviousValue, previous_result = delta.PreviousId }));
             await audit.WriteAsync(conn, tx, new AuditEntry("system:inbox", "result.received", "result", resultId.ToString(),
                 Accession: specimen.Accession, PatientId: specimen.Mrn, CorrelationId: item.CorrelationId,
                 After: new { code = catalog!.Code, value = value.ValueText, value.Units, version, mapping = mapping.Id, rerun = r.IsRerun }));
