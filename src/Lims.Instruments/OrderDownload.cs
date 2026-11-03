@@ -2,9 +2,10 @@ using System.Globalization;
 using Lims.Audit;
 using Lims.Contracts;
 using Lims.Instruments.Astm;
+using Lims.Instruments.Generic;
 using Lims.Instruments.Hl7;
+using Lims.Instruments.Registration;
 using Lims.Platform;
-using Microsoft.Extensions.Options;
 
 namespace Lims.Instruments;
 
@@ -12,6 +13,7 @@ namespace Lims.Instruments;
 /// Host-initiated order download ("resend order", design 8). Built from the manuals' batch examples:
 /// e411 Host Interface Manual v2.2 "Batch test selection information" (cobas type only) and c111 manual 9.11.
 /// The BC-5000 asks for its worklist when it reads a tube, so there is nothing to push: rescan the tube.
+/// Registered analyzers push only when their worklist mode includes Push (generic ASTM or HL7 order message).
 /// DOCUMENTED, NOT interface-tested.
 /// </summary>
 public static class OrderDownload
@@ -39,22 +41,35 @@ public static class OrderDownload
                 o[5] = priority; o[11] = "A"; o[22] = now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture); o[25] = "O";
                 return Message($"H|\\^&|||host^1|||||c111|TSDWN^BATCH|P|1|{now:yyyyMMddHHmmss}", o);
             }
+            case GenericAstmParser.Id when cfg.Generic.PushesOrders:
+                return GenericAstmMessages.Order(cfg.Generic, order.SampleId, order, now);
+            case GenericHl7Parser.Id when cfg.Generic.PushesOrders:
+                return GenericHl7Messages.Order(cfg.Generic, order, now);
             default:
                 return null;
         }
     }
+
+    /// <summary>Whether the screens offer "Resend order" for this analyzer.</summary>
+    public static bool Supports(InstrumentConfig cfg) => cfg.Parser switch
+    {
+        CobasE411Parser.Id => cfg.HostQuery && cfg.Variant == E411ProtocolVariant.Cobas,
+        CobasC111Parser.Id => cfg.HostQuery,
+        GenericAstmParser.Id or GenericHl7Parser.Id => cfg.Generic.PushesOrders,
+        _ => false,
+    };
 
     private static string[] Fields(int n) { var a = new string[n]; Array.Fill(a, ""); return a; }
     private static string Message(string header, string[] o) => string.Join("\r", header, "P|1", string.Join("|", o), "L|1|N") + "\r";
 }
 
 /// <summary>Resends a specimen's order to an analyzer on operator request; audited.</summary>
-public sealed class OrderResendService(IOptions<InstrumentsOptions> options, IInstrumentOrderLookup lookup, LinkHealthRegistry links,
+public sealed class OrderResendService(InstrumentDirectory directory, IInstrumentOrderLookup lookup, LinkHealthRegistry links,
     Db db, AuditWriter audit, TimeProvider time)
 {
     public async Task<string> ResendAsync(string instrumentId, string sampleId, string user, CancellationToken ct)
     {
-        var cfg = options.Value.Instruments.FirstOrDefault(i => i.Id == instrumentId) ?? throw new WorkflowException("Unknown instrument");
+        var cfg = directory.Find(instrumentId) ?? throw new WorkflowException("Unknown instrument");
         if (cfg.Parser == MindrayBc5000Parser.Id)
             throw new WorkflowException("The BC-5000 requests its worklist when it reads the tube: rescan the tube on the analyzer");
         var order = await lookup.GetOrdersForSampleAsync(instrumentId, sampleId, ct)

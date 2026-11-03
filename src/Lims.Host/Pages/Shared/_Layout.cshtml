@@ -33,7 +33,7 @@
   <strong>LIMS middleware</strong>
   @if (User.Identity?.IsAuthenticated == true)
   {
-    <a href="/">Health</a><a href="/Orders">Orders</a><a href="/Specimens">Specimens</a><a href="/Analyzers">Analyzers</a><a href="/Review">Review</a><a href="/Exceptions">Exceptions</a><a href="/Deliveries">Deliveries</a><a href="/Reconciliation">Reconciliation</a><a href="/Downtime">Downtime</a><a href="/Configuration">Configuration</a><a href="/AuditLog">Audit</a>
+    <a href="/">Health</a><a href="/Orders">Orders</a><a href="/Specimens">Specimens</a><a href="/Analyzers">Analyzers</a>@if (User.IsInRole(Roles.LabManager)) { <a href="/AnalyzerSetup">Analyzer setup</a> }<a href="/Review">Review</a><a href="/Exceptions">Exceptions</a><a href="/Deliveries">Deliveries</a><a href="/Reconciliation">Reconciliation</a><a href="/Downtime">Downtime</a><a href="/Configuration">Configuration</a><a href="/AuditLog">Audit</a>
     <span style="margin-left:auto">@User.Identity.Name</span>
     <form method="post" action="/Logout" class="inline"><button type="submit">Sign out</button></form>
   }

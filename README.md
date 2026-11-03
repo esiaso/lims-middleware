@@ -16,6 +16,10 @@ the cobas c 111 and Mindray BC-5000 adapters, the remaining screens of section 8
 > | Roche cobas c 111 | cobas c 111 Host Interface Manual v2.2 (June 2021, software 3.0 and higher) | ASTM E1381/E1394 |
 > | Mindray BC-5000 | BC-5000 "3107 HL7 Communication Protocol" V2.0 | HL7 v2.3.1 over MLLP |
 >
+> Other analyzers that speak ASTM E1381/E1394 or HL7 v2 can be registered from the **Analyzer setup** screen with
+> maker-checker approval (see `docs/ADDING-ANALYZERS.md`). They run on generic, configurable adapters and are
+> **CONFIGURED, not interface-tested**: recorded as `unverified` until verified on site.
+>
 > Nothing in this repository may be called compatible with any instrument until the on-site Gate 2 verification
 > (design 11.3) is signed for that model, software version and configuration.
 
@@ -27,7 +31,7 @@ the cobas c 111 and Mindray BC-5000 adapters, the remaining screens of section 8
 | `src/Lims.Platform` | Database access, SQL migrations, accession numbers, TOTP, retry schedule, roles |
 | `src/Lims.Audit` | Hash-chained, append-only audit writer, chain verifier, external export with hourly anchors |
 | `src/Lims.Messaging` | Inbox/outbox tables claimed with `FOR UPDATE SKIP LOCKED`, inbox processor, dead letter |
-| `src/Lims.Instruments` | ASTM E1381 link and HL7/MLLP link, e411, c111 and BC-5000 parsers, query replies, order download, transports (TCP, serial), mappings |
+| `src/Lims.Instruments` | ASTM E1381 link and HL7/MLLP link, e411, c111 and BC-5000 parsers, generic configurable ASTM and HL7 adapters, analyzer registration, query replies, order download, transports (TCP, serial), mappings |
 | `src/Lims.Clinical` | Order registration (with panels), specimens, labels and recollection, result matching, review, approval, autoverification, corrections, downtime |
 | `src/Lims.Hmis` | REST client (OAuth client credentials, rate limit), order poller, webhook events, outbox dispatcher with read-back |
 | `src/Lims.Host` | ASP.NET Core host (Windows Service), API, local accounts with MFA, Razor Pages screens, health |
@@ -101,6 +105,9 @@ Example `appsettings.Local.json`:
 }
 ```
 
+To add an analyzer that has no built-in adapter, use the Analyzer setup screen instead of `appsettings`
+(`docs/ADDING-ANALYZERS.md`).
+
 Seed the catalog and mappings through the API as a Lab Manager (`POST /api/catalog`, `POST /api/mappings`, then
 `POST /api/mappings/{id}/approve` by a second Lab Manager).
 
@@ -127,5 +134,7 @@ For a server without internet access, use the offline bundle built by CI: see `d
 * Corrections are new versions and go to the HMIS as amendments that reference the original HMIS result id.
 * Every state change writes a hash-chained audit event in the same transaction; UPDATE and DELETE on the audit
   table are refused by a trigger.
+* A registered analyzer's link starts only after a second Lab Manager approves its definition; a new version or a
+  disable takes effect without a restart, and each step is audited.
 * Nothing is autoverified at install. A rule needs a validation document ID and a second Lab Manager, and releases a
   result only when every condition holds (first run, numeric, in limits, no flags, delta passed, unflagged QC in the window).

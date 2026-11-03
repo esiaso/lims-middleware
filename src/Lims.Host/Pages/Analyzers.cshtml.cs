@@ -13,7 +13,7 @@ public sealed record AnalyzerView(InstrumentConfig Config, LinkHealth Health, st
     IReadOnlyList<dynamic> Messages, IReadOnlyList<dynamic> Qc);
 
 /// <summary>Analyzers and worklists (design 8): link state, pending worklist, last messages (metadata only), QC today.</summary>
-public sealed class AnalyzersModel(Db db, IOptions<InstrumentsOptions> options, LinkHealthRegistry links, OrderResendService resend) : PageModel
+public sealed class AnalyzersModel(Db db, Lims.Instruments.Registration.InstrumentDirectory directory, LinkHealthRegistry links, OrderResendService resend) : PageModel
 {
     public IReadOnlyList<AnalyzerView> Analyzers { get; private set; } = [];
     public string? Message { get; private set; }
@@ -24,7 +24,7 @@ public sealed class AnalyzersModel(Db db, IOptions<InstrumentsOptions> options, 
     {
         await using var conn = await db.OpenAsync(ct);
         var list = new List<AnalyzerView>();
-        foreach (var cfg in options.Value.Instruments)
+        foreach (var cfg in directory.All)
         {
             var verification = await conn.ExecuteScalarAsync<string?>("SELECT verification_status FROM instruments.instrument WHERE id=@Id", cfg) ?? "unregistered";
             list.Add(new AnalyzerView(cfg, links.Get(cfg.Id), verification,

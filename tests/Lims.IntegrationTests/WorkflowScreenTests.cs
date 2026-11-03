@@ -206,7 +206,7 @@ public sealed partial class EndToEndTests
         var s = await CollectAndAcceptAsync(orderId);
         foreach (var page in new[] { "/", "/Orders", "/Specimens", $"/Specimens?accession={s.Accession}", "/Analyzers", "/LoadList?instrument=bc5000-1",
                      "/Review", "/Exceptions", "/Deliveries", "/Reconciliation", "/Downtime", "/Configuration", "/Configuration?history=true",
-                     "/AuditLog", "/AuditLog?action=specimen.&instrument=c111-1" })
+                     "/AuditLog", "/AuditLog?action=specimen.&instrument=c111-1", "/AnalyzerSetup", "/AnalyzerSetup?history=true" })
         {
             var res = await http.GetAsync(page);
             var body = await res.Content.ReadAsStringAsync();
