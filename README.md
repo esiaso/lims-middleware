@@ -33,6 +33,7 @@ the cobas c 111 and Mindray BC-5000 adapters, the remaining screens of section 8
 | `src/Lims.Host` | ASP.NET Core host (Windows Service), API, local accounts with MFA, Razor Pages screens, health |
 | `sim/Lims.Sim.E411` | cobas e 411 and c 111 simulator (plays the analyzer behind a serial device server) |
 | `sim/Lims.Sim.Bc5000` | Mindray BC-5000 simulator (connects to the middleware over MLLP, like the analyzer) |
+| `tools/Lims.Capture` | `lims-capture` site visit tool: listen-only or proxy capture, extract, anonymize, replay snapshot (see `tests/captures/README.md`) |
 | `sim/Lims.Sim.Hmis` | HMIS simulator implementing the proposed lab API (design 6.9) with fault switches |
 | `tests/` | Unit tests (no database) and end-to-end tests against PostgreSQL |
 | `deploy/` | Windows install, backup and restore-drill scripts, PostgreSQL roles and grants |
