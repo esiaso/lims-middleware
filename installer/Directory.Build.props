@@ -1,0 +1,1 @@
+<Project><!-- Stop the repo-wide .NET settings from applying to the WiX project. --></Project>

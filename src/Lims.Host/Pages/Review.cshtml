@@ -13,12 +13,15 @@
     <td>@r.TestCode @(r.Version > 1 ? $"(v{r.Version})" : "")</td>
     <td class="@(r.IsCritical ? "critical" : "")">@r.ValueText @r.Units @(r.IsCritical ? "CRITICAL" : "")</td>
     <td>@r.ReferenceRange</td>
-    <td>@r.AbnormalFlag @string.Join(" ", r.InstrumentFlags) @(r.FlagMismatch ? "(flag differs from instrument)" : "")</td>
+    <td>@r.AbnormalFlag @string.Join(" ", r.InstrumentFlags) @(r.FlagMismatch ? "(flag differs from instrument)" : "")
+      @if (r.DeltaFlag) { <br><strong class="critical">DELTA</strong> <small>previous @r.DeltaPreviousValue</small> }</td>
     <td><span class="badge @(r.Status == "received" ? "Received" : "Reviewed")">@(r.Status == "received" ? "Received" : "Reviewed")</span></td>
     <td>
       @if (r.Status == "received" && User.IsInRole(Roles.Technologist))
       {
-        <form method="post" asp-page-handler="Review" class="inline"><input type="hidden" name="id" value="@r.ResultId"><button>Review</button></form>
+        <form method="post" asp-page-handler="Review" class="inline"><input type="hidden" name="id" value="@r.ResultId">
+          @if (r.DeltaFlag) { <input name="comment" placeholder="Delta: why the change is plausible" required> }
+          <button>Review</button></form>
       }
       @if (User.IsInRole(Roles.Approver))
       {
@@ -30,6 +33,7 @@
             <select name="method"><option>phone</option><option>in person</option></select>
             <label><input type="checkbox" name="readBack" value="true" required> read-back done</label>
           }
+          @if (r.DeltaFlag) { <input name="deltaComment" placeholder="Delta confirmation (if not already reviewed)"> }
           <button>Approve</button>
         </form>
         <form method="post" asp-page-handler="Reject" class="inline"><input type="hidden" name="id" value="@r.ResultId"><input name="reason" placeholder="Reason" required><button>Reject / rerun</button></form>

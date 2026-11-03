@@ -32,6 +32,7 @@ public sealed class ResultReviewService(Db db, AuditWriter audit, OutboxStore ou
     public int Version { get; init; }
     public string Status { get; init; } = default!;
     public bool IsCritical { get; init; }
+    public bool DeltaFlag { get; init; }
     public string ValueType { get; init; } = default!;
     public string ValueText { get; init; } = default!;
     public string? Comparator { get; init; }
@@ -58,7 +59,7 @@ public sealed class ResultReviewService(Db db, AuditWriter audit, OutboxStore ou
     private static async Task<ResultCtx> LoadAsync(NpgsqlConnection conn, NpgsqlTransaction tx, Guid resultId)
     {
         var ctx = await conn.QuerySingleOrDefaultAsync<ResultCtx>("""
-            SELECT r.id, r.result_group AS ResultGroup, r.version, r.status, r.is_critical AS IsCritical, r.value_type AS ValueType,
+            SELECT r.id, r.result_group AS ResultGroup, r.version, r.status, r.is_critical AS IsCritical, r.delta_flag AS DeltaFlag, r.value_type AS ValueType,
                    r.value_text AS ValueText, r.comparator, r.units, r.reference_range AS ReferenceRange, r.abnormal_flag AS AbnormalFlag,
                    r.specimen_test_id AS SpecimenTestId, s.accession, p.mrn, o.hmis_order_id AS HmisOrderId, ot.hmis_line_id AS HmisLineId,
                    e.hmis_encounter_id AS HmisEncounterId, ot.catalog_code AS CatalogCode, COALESCE(ot.loinc, cat.loinc) AS Loinc, o.priority,
@@ -91,7 +92,8 @@ public sealed class ResultReviewService(Db db, AuditWriter audit, OutboxStore ou
                 Accession: r.Accession, PatientId: r.Mrn, Reason: comment));
         }, ct);
 
-    public Task<Guid> ApproveAsync(Guid resultId, string user, CriticalNotification? critical, CancellationToken ct) =>
+    /// <param name="deltaComment">For a delta-flagged result: the approver's confirmation, recorded as a review comment.</param>
+    public Task<Guid> ApproveAsync(Guid resultId, string user, CriticalNotification? critical, CancellationToken ct, string? deltaComment = null) =>
         db.InTransactionAsync(async (conn, tx) =>
         {
             var r = await LoadAsync(conn, tx, resultId);
@@ -106,6 +108,17 @@ public sealed class ResultReviewService(Db db, AuditWriter audit, OutboxStore ou
             {
                 if (critical is null || string.IsNullOrWhiteSpace(critical.NotifiedPerson) || string.IsNullOrWhiteSpace(critical.Method) || !critical.ReadBackDone)
                     throw new WorkflowException("Critical result: record who was notified, how, when, and that read-back was done");
+            }
+            if (r.DeltaFlag)
+            {
+                if (!string.IsNullOrWhiteSpace(deltaComment))
+                    await conn.ExecuteAsync("INSERT INTO clinical.review (id, result_id, action, actor, reason) VALUES (@id, @resultId, 'comment', @user, @deltaComment)",
+                        new { id = Guid.CreateVersion7(), resultId, user, deltaComment }, tx);
+                var confirmed = await conn.ExecuteScalarAsync<bool>("""
+                    SELECT EXISTS(SELECT 1 FROM clinical.review WHERE result_id=@resultId AND action IN ('review','comment')
+                                  AND length(btrim(COALESCE(reason,''))) > 0)
+                    """, new { resultId }, tx);
+                if (!confirmed) throw new WorkflowException("Delta check failed: add a review comment confirming the change from the previous result before approving");
             }
 
             var approvalId = Guid.CreateVersion7();
@@ -185,6 +198,7 @@ public sealed class ResultReviewService(Db db, AuditWriter audit, OutboxStore ou
                     NULL, COALESCE(@Units, units), reference_range, NULL, instrument_flags, false, is_critical, 'received', id, @Reason, mapping_id
                 FROM clinical.result WHERE id=@resultId
                 """, new { id, resultId, c.ValueText, c.NumericValue, c.Units, c.Reason }, tx);
+            await DeltaCheck.ApplyAsync(conn, tx, id);
             await audit.WriteAsync(conn, tx, new AuditEntry(user, "result.correction_created", "result", id.ToString(),
                 Accession: r.Accession, PatientId: r.Mrn, Reason: c.Reason,
                 Before: new { r.ValueText, r.Version }, After: new { c.ValueText, version = r.Version + 1 }));

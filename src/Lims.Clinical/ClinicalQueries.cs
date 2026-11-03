@@ -19,6 +19,8 @@ public sealed class ReviewQueueRow
     public string[] InstrumentFlags { get; init; } = default!;
     public bool FlagMismatch { get; init; }
     public bool IsCritical { get; init; }
+    public bool DeltaFlag { get; init; }
+    public decimal? DeltaPreviousValue { get; init; }
     public string Priority { get; init; } = default!;
     public DateTime CreatedAt { get; init; }
     public string? ChangeReason { get; init; }
@@ -26,6 +28,7 @@ public sealed class ReviewQueueRow
 
 public sealed class ExceptionRow
 {
+    public Guid InboxMessageId { get; init; }
     public Guid Id { get; init; }
     public string Kind { get; init; } = default!;
     public string InstrumentId { get; init; } = default!;
@@ -72,7 +75,7 @@ public sealed class ClinicalQueries(Db db)
             SELECT r.id AS ResultId, r.version, r.status, s.accession, p.mrn, concat_ws(', ', p.family_name, p.given_name) AS PatientName,
                    ot.catalog_code AS TestCode, r.value_text AS ValueText, r.units, r.reference_range AS ReferenceRange,
                    r.abnormal_flag AS AbnormalFlag, r.instrument_flags AS InstrumentFlags, r.flag_mismatch AS FlagMismatch,
-                   r.is_critical AS IsCritical, o.priority, r.created_at AS CreatedAt, r.change_reason AS ChangeReason
+                   r.is_critical AS IsCritical, r.delta_flag AS DeltaFlag, r.delta_previous_value AS DeltaPreviousValue, o.priority, r.created_at AS CreatedAt, r.change_reason AS ChangeReason
             FROM clinical.result r
             JOIN clinical.specimen_test st ON st.id=r.specimen_test_id
             JOIN clinical.specimen s ON s.id=st.specimen_id
@@ -89,7 +92,7 @@ public sealed class ClinicalQueries(Db db)
     {
         await using var conn = await db.OpenAsync(ct);
         return (await conn.QueryAsync<ExceptionRow>("""
-            SELECT id, disposition AS Kind, instrument_id AS InstrumentId, sample_id AS SampleId, instrument_test_code AS TestCode,
+            SELECT id, inbox_message_id AS InboxMessageId, disposition AS Kind, instrument_id AS InstrumentId, sample_id AS SampleId, instrument_test_code AS TestCode,
                    raw_value AS RawValue, quarantine_reason AS Reason, received_at AS ReceivedAt
             FROM clinical.instrument_result
             WHERE disposition IN ('unmatched','quarantined') AND resolved_at IS NULL
@@ -131,4 +134,17 @@ public sealed class ClinicalQueries(Db db)
             ORDER BY o.created_at DESC LIMIT 200
             """)).ToList();
     }
+
+    /// <summary>An approver closes an exception with a reason (for example: tube re-run, result entered manually).</summary>
+    public Task<int> ResolveExceptionAsync(Guid id, string user, string reason, Lims.Audit.AuditWriter audit, CancellationToken ct) =>
+        db.InTransactionAsync(async (conn, tx) =>
+        {
+            if (string.IsNullOrWhiteSpace(reason)) throw new WorkflowException("A reason is required");
+            var n = await conn.ExecuteAsync("""
+                UPDATE clinical.instrument_result SET resolved_at=now(), resolved_by=@user
+                WHERE id=@id AND disposition IN ('unmatched','quarantined') AND resolved_at IS NULL
+                """, new { id, user }, tx);
+            if (n > 0) await audit.WriteAsync(conn, tx, new Lims.Audit.AuditEntry(user, "exception.resolved", "instrument_result", id.ToString(), Reason: reason));
+            return n;
+        }, ct);
 }

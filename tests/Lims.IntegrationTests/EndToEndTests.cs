@@ -13,15 +13,17 @@ using Lims.Sim.E411;
 namespace Lims.IntegrationTests;
 
 [Collection("lims")]
-public sealed class EndToEndTests(LimsFixture f)
+public sealed partial class EndToEndTests(LimsFixture f)
 {
     private static int _seq;
 
-    private async Task<(Guid OrderId, string OrderHmisId, string Mrn)> NewOrderAsync(params string[] tests)
+    private Task<(Guid OrderId, string OrderHmisId, string Mrn)> NewOrderAsync(params string[] tests) => NewOrderForAsync(null, tests);
+
+    private async Task<(Guid OrderId, string OrderHmisId, string Mrn)> NewOrderForAsync(string? patientMrn, params string[] tests)
     {
         var n = Interlocked.Increment(ref _seq);
         var id = $"ORD-{Guid.NewGuid():N}"[..16];
-        var mrn = $"MRN-TEST-{n:D4}{Random.Shared.Next(1000, 9999)}";
+        var mrn = patientMrn ?? $"MRN-TEST-{n:D4}{Random.Shared.Next(1000, 9999)}";
         f.HmisState.UpsertOrder(new HmisOrder(id, DateTimeOffset.UtcNow, "active", "routine",
             new HmisPatient(mrn, "Jane", "TEST", "F", new DateOnly(1990, 1, 1), null, null),
             new HmisEncounter($"ENC-{id}", "outpatient", "OPD"), "Dr TEST",

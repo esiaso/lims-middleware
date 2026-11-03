@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LIMS middleware MSI (design 10.3). Installs the self-contained service, registers the Windows Service under a
+  virtual account, sets machine-specific settings through the service's environment, and applies ACLs.
+
+  Public properties (msiexec /i LimsMiddleware.msi PROPERTY=value):
+    SERVICEACCOUNT  default NT SERVICE\LimsMiddleware (virtual account; no password)
+    DATADIR         default D:\LimsMiddleware (logs, audit export, restore-drill evidence)
+    HTTPSPORT       default 443
+    CERTTHUMBPRINT  thumbprint of the hospital certificate in LocalMachine\My (required for HTTPS)
+
+  Secrets (DB connection, HMIS client secret, webhook secret) are NOT MSI properties, because MSI logs properties.
+  Set them after install with Lims.Host.exe protect-secret, as described in README "Deploying on Windows".
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="LIMS Middleware" Manufacturer="Hospital Laboratory" Version="$(ProductVersion)"
+           UpgradeCode="6F0C4A1E-6B0D-4E3B-9F55-2C1E7A8D4B21" Scope="perMachine" Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of LIMS Middleware is already installed." Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="SERVICEACCOUNT" Value="NT SERVICE\LimsMiddleware" Secure="yes" />
+    <Property Id="DATADIR" Value="D:\LimsMiddleware" Secure="yes" />
+    <Property Id="HTTPSPORT" Value="443" Secure="yes" />
+    <Property Id="CERTTHUMBPRINT" Secure="yes" />
+
+    <Launch Condition="Installed OR VersionNT64 &gt;= 603" Message="Windows Server 2016 or later (x64) is required; Windows Server 2022 is the supported target." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="LimsMiddleware" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="LIMS Middleware service">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="ServiceComponent" />
+      <ComponentRef Id="DataDirComponent" />
+    </Feature>
+
+    <!-- Everything from the publish folder except the service executable, which the service component owns. -->
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(PublishDir)**">
+        <Exclude Files="$(PublishDir)Lims.Host.exe" />
+        <Exclude Files="$(PublishDir)appsettings.Local.json" />
+        <Exclude Files="$(PublishDir)**\*.pdb" />
+      </Files>
+    </ComponentGroup>
+
+    <Component Id="ServiceComponent" Directory="INSTALLFOLDER" Guid="B8E2E3B0-4B39-4B0E-8E1F-0D5C3F6A9A11">
+      <File Id="LimsHostExe" Source="$(PublishDir)Lims.Host.exe" KeyPath="yes" />
+      <ServiceInstall Id="LimsService" Name="LimsMiddleware" DisplayName="LIMS Middleware"
+                      Description="HMIS to analyzer middleware (ASTM, inbox/outbox, result review)"
+                      Type="ownProcess" Start="auto" ErrorControl="normal" Account="[SERVICEACCOUNT]" Vital="yes">
+        <ServiceConfig DelayedAutoStart="yes" OnInstall="yes" OnReinstall="yes" />
+        <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart"
+                            ThirdFailureActionType="restart" RestartServiceDelayInSeconds="60" ResetPeriodInDays="1" />
+      </ServiceInstall>
+      <!-- Not started by the installer: secrets and DB roles must be configured first (verify.ps1 then Start-Service). -->
+      <ServiceControl Id="LimsServiceControl" Name="LimsMiddleware" Stop="both" Remove="uninstall" Wait="yes" />
+      <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\LimsMiddleware" Name="Environment" Type="multiString">
+        <MultiStringValue Value="DOTNET_ENVIRONMENT=Production" />
+        <MultiStringValue Value="Https__Port=[HTTPSPORT]" />
+        <MultiStringValue Value="Https__CertificateThumbprint=[CERTTHUMBPRINT]" />
+        <MultiStringValue Value="AuditExport__FileSinkDirectory=[DATADIR]\audit-export" />
+        <MultiStringValue Value="Logging__EventLog__SourceName=LimsMiddleware" />
+      </RegistryValue>
+      <util:EventSource Name="LimsMiddleware" Log="Application" EventMessageFile="[WindowsFolder]Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll" />
+    </Component>
+
+    <Component Id="DataDirComponent" Directory="INSTALLFOLDER" Guid="3C7D9B44-0E62-4F0A-A4C6-5E2B8C1D7F02">
+      <RegistryValue Root="HKLM" Key="SOFTWARE\LimsMiddleware" Name="DataDir" Value="[DATADIR]" Type="string" KeyPath="yes" />
+    </Component>
+
+    <!--
+      ACLs (design 9.3): program files read/execute for the service, data folder modify for the service,
+      nothing for Users. Run with icacls after InstallServices so the virtual account exists. Data is kept on uninstall.
+    -->
+    <SetProperty Id="SetAcls" Sequence="execute" Before="SetAcls"
+                 Value="&quot;[System64Folder]cmd.exe&quot; /c mkdir &quot;[DATADIR]\audit-export&quot; &amp; mkdir &quot;[DATADIR]\logs&quot; &amp; icacls &quot;[INSTALLFOLDER].&quot; /inheritance:r /grant:r *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F &quot;[SERVICEACCOUNT]:(OI)(CI)RX&quot; &amp;&amp; icacls &quot;[DATADIR]&quot; /inheritance:r /grant:r *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F &quot;[SERVICEACCOUNT]:(OI)(CI)M&quot;" />
+    <CustomAction Id="SetAcls" DllEntry="WixQuietExec64" BinaryRef="Wix4UtilCA_X64" Execute="deferred" Impersonate="no" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="SetAcls" After="InstallServices" Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

@@ -58,3 +58,18 @@ public class PlatformTests
         Assert.InRange(Backoff.Delay(20, rng).TotalMinutes, 13.5, 16.5);
     }
 }
+
+public sealed class DeltaRuleTests
+{
+    [Theory]
+    [InlineData(3.5, 2.0, 50.0, null, true)]      // +75%
+    [InlineData(2.9, 2.0, 50.0, null, false)]     // +45%
+    [InlineData(1.0, 2.0, 50.0, null, false)]     // -50% is not more than 50%
+    [InlineData(0.9, 2.0, 50.0, null, true)]      // -55%
+    [InlineData(10.0, 9.0, null, 0.5, true)]    // absolute 1.0 > 0.5
+    [InlineData(9.4, 9.0, null, 0.5, false)]
+    [InlineData(0.1, 0.0, 50.0, null, true)]      // any change from zero exceeds a percent limit
+    [InlineData(5.0, 2.0, null, null, false)]   // no limits configured
+    public void Percent_or_absolute_limit(double current, double previous, double? pct, double? abs, bool expected) =>
+        Assert.Equal(expected, Lims.Clinical.DeltaCheck.Exceeds((decimal)current, (decimal)previous, (decimal?)pct, (decimal?)abs));
+}

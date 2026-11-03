@@ -30,3 +30,38 @@ jobs:
         with:
           name: test-results
           path: TestResults
+
+  windows-msi:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      # Unit tests on Windows include the DPAPI round trip, which is skipped on Linux.
+      - run: dotnet test tests/Lims.UnitTests -c Release
+      - run: dotnet publish src/Lims.Host -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o artifacts/publish/win-x64
+      - run: dotnet build installer/Lims.Installer.wixproj -c Release -p:PublishDir=${{ github.workspace }}\artifacts\publish\win-x64\
+      - name: Install MSI and check the service registration
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem installer -Recurse -Filter *.msi | Select-Object -First 1
+          $p = Start-Process msiexec -ArgumentList "/i `"$($msi.FullName)`" /qn /l*v msi-install.log DATADIR=C:\LimsData HTTPSPORT=8443" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content msi-install.log -Tail 80; throw "msiexec failed: $($p.ExitCode)" }
+          $svc = Get-CimInstance Win32_Service -Filter "Name='LimsMiddleware'"
+          if (-not $svc) { throw "service not registered" }
+          if ($svc.StartName -ne 'NT SERVICE\LimsMiddleware') { throw "unexpected account $($svc.StartName)" }
+          $env = (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\LimsMiddleware).Environment
+          if ($env -notcontains 'Https__Port=8443') { throw "environment not set: $env" }
+          if (-not (Test-Path C:\LimsData\audit-export)) { throw "data dir not created" }
+          & "C:\Program Files\LimsMiddleware\Lims.Host.exe" verify-audit 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 1) { throw "CLI did not run from the install folder" }
+          $p = Start-Process msiexec -ArgumentList "/x `"$($msi.FullName)`" /qn" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
+          if (Get-Service LimsMiddleware -ErrorAction SilentlyContinue) { throw "service still registered after uninstall" }
+          # The CLI check above leaves LASTEXITCODE=1 on purpose; the runner would otherwise report it as the step result.
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msi
+          path: installer/**/bin/**/*.msi

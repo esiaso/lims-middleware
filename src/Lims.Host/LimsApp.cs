@@ -5,6 +5,7 @@ using Lims.Contracts;
 using Lims.Hmis;
 using Lims.Host.Api;
 using Lims.Host.Identity;
+using Lims.Host.Security;
 using Lims.Instruments;
 using Lims.Instruments.Astm;
 using Lims.Messaging;
@@ -28,11 +29,21 @@ public static class LimsApp
         builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true);
         configure?.Invoke(builder);
 
+        // Protected secrets (design 9.4): resolve references, refuse plain secrets outside dev/test.
+        var plaintext = SecretResolver.PlaintextSecrets(builder.Configuration);
+        if (plaintext.Count > 0 && !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing")
+            && !builder.Configuration.GetValue<bool>("AllowPlaintextSecrets"))
+            throw new InvalidOperationException(
+                $"Plain-text secrets in configuration: {string.Join(", ", plaintext)}. Use 'Lims.Host.exe protect-secret' (DPAPI) or credential:/file: references.");
+        builder.Configuration.AddInMemoryCollection(SecretResolver.ResolveAll(builder.Configuration));
+        HttpsSetup.Configure(builder);
+
         var s = builder.Services;
         var cs = builder.Configuration.GetConnectionString("Lims") ?? throw new InvalidOperationException("ConnectionStrings:Lims is required");
         s.AddSingleton(_ => new NpgsqlDataSourceBuilder(cs).Build());
         s.AddSingleton<Db>();
         s.AddSingleton<IClock, SystemClock>();
+        s.AddSingleton<StorageGate>();
         s.AddSingleton<Migrator>();
 
         // Audit
@@ -87,6 +98,17 @@ public static class LimsApp
         s.AddSingleton(builder.Configuration.GetSection("PasswordPolicy").Get<PasswordPolicy>() ?? new PasswordPolicy());
         s.AddSingleton<UserStore>();
         s.AddSingleton<HealthService>();
+
+        // Operations: reconciliation (7.7), critical escalation (7.8), disk watch (7.6)
+        s.Configure<Lims.Host.Operations.ReconciliationOptions>(builder.Configuration.GetSection("Reconciliation"));
+        s.Configure<Lims.Host.Operations.HousekeepingOptions>(builder.Configuration.GetSection("Housekeeping"));
+        s.AddSingleton<Lims.Host.Operations.ReconciliationService>();
+        s.AddHostedService(sp => sp.GetRequiredService<Lims.Host.Operations.ReconciliationService>());
+        s.Configure<Lims.Host.Operations.CatalogSyncOptions>(builder.Configuration.GetSection("CatalogSync"));
+        s.AddSingleton<Lims.Host.Operations.CatalogSyncService>();
+        s.AddHostedService(sp => sp.GetRequiredService<Lims.Host.Operations.CatalogSyncService>());
+        s.AddSingleton<Lims.Host.Operations.HousekeepingService>();
+        s.AddHostedService(sp => sp.GetRequiredService<Lims.Host.Operations.HousekeepingService>());
         s.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
         {
             o.LoginPath = "/Login";
@@ -128,6 +150,7 @@ public static class LimsApp
         app.UseAuthorization();
         app.MapRazorPages();
         ApiEndpoints.Map(app);
+        OperationsEndpoints.Map(app);
         return app;
     }
 

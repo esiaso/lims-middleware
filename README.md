@@ -26,7 +26,8 @@ This is **Phase 1 (MVP)** of the design document "LIMS Middleware Design: HMIS t
 | `sim/Lims.Sim.E411` | cobas e 411 simulator (plays the analyzer behind a serial device server) |
 | `sim/Lims.Sim.Hmis` | HMIS simulator implementing the proposed lab API (design 6.9) with fault switches |
 | `tests/` | Unit tests (no database) and end-to-end tests against PostgreSQL |
-| `deploy/` | Interim Windows install script, PostgreSQL roles and grants |
+| `deploy/` | Windows install, backup and restore-drill scripts, PostgreSQL roles and grants |
+| `installer/` | WiX v5 MSI (built on Windows CI) |
 | `docs/IMPLEMENTATION-NOTES.md` | What Phase 1 covers, deviations from the design, and what is left |
 
 Modules only reference `Contracts`, `Platform`, `Messaging` and `Audit`; an architecture test fails the build if
@@ -47,7 +48,9 @@ The integration tests start the real host, the HMIS simulator on Kestrel, and th
 run the whole flow: HMIS order, poll, accession, host query, result upload, review, approval, HMIS delivery.
 They also cover a lost HMIS response (read-back, no duplicate), HTTP 429 retry, duplicate and rerun messages,
 unknown barcodes, unmapped codes, QC diversion, critical results, corrections sent as amendments, the database
-refusing an unapproved outbox row, and audit tamper detection.
+refusing an unapproved outbox row, and audit tamper detection, plus the go-live operations: critical escalation,
+the low-disk link refusal, catalog sync approval, exception resolve and the admin CLI. Unit tests cover secret
+references, syslog over TLS against an in-process TLS server, and Kestrel HTTPS with a self-signed PFX.
 
 ## Run locally with the simulators
 
@@ -75,6 +78,15 @@ Example `appsettings.Local.json`:
 
 Seed the catalog and mappings through the API as a Lab Manager (`POST /api/catalog`, `POST /api/mappings`, then
 `POST /api/mappings/{id}/approve` by a second Lab Manager).
+
+## Deploying on Windows
+
+1. Install with `msiexec /i LimsMiddleware-<version>-x64.msi DATADIR=D:\LimsMiddleware CERTTHUMBPRINT=<thumbprint>`.
+   The service is registered under `NT SERVICE\LimsMiddleware` and left stopped.
+2. Create the database roles (`deploy/sql/roles.sql`), then `Lims.Host.exe migrate --connection "<owner connection>"` and `deploy/sql/grants.sql`.
+3. Protect each secret on the server: `echo <secret> | "C:\Program Files\LimsMiddleware\Lims.Host.exe" protect-secret`,
+   and put the printed `dpapi-machine:...` values in `appsettings.Local.json` in the install folder.
+4. Run `deploy/windows/verify.ps1`, start the service, schedule `backup.ps1` (see `docs/BACKUP-RUNBOOK.md`).
 
 ## Key rules the code enforces
 

@@ -1,0 +1,13 @@
+@page
+@model Lims.Host.Pages.ReconciliationModel
+@{ ViewData["Title"] = "Reconciliation"; }
+<h1>Reconciliation</h1>
+<p>Refreshed every 5 minutes. Items close by themselves when the condition clears; a cancellation after release needs a person.</p>
+<table>
+<tr><th>Severity</th><th>Kind</th><th>Detail</th><th>First seen</th><th></th></tr>
+@foreach (var i in Model.Items)
+{
+  <tr><td class="@((string)i.severity == "critical" ? "critical" : "")">@i.severity</td><td>@i.kind</td><td>@i.detail</td><td>@(((DateTime)i.first_seen_at).ToString("u"))</td>
+  <td>@if (Model.CanResolve) { <form method="post" asp-page-handler="Resolve" class="inline"><input type="hidden" name="id" value="@i.id"><input name="reason" placeholder="What was done" required><button>Resolve</button></form> }</td></tr>
+}
+</table>
