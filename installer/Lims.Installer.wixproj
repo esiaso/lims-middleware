@@ -2,10 +2,11 @@
   <!-- Built only on Windows (CI job "windows-msi"). Expects a self-contained win-x64 publish in $(PublishDir). -->
   <PropertyGroup>
     <OutputType>Package</OutputType>
+    <!-- Before OutputName, which uses it. -->
+    <ProductVersion Condition="'$(ProductVersion)' == ''">0.3.0</ProductVersion>
     <OutputName>LimsMiddleware-$(ProductVersion)-x64</OutputName>
     <Platform>x64</Platform>
     <InstallerPlatform>x64</InstallerPlatform>
-    <ProductVersion Condition="'$(ProductVersion)' == ''">0.3.0</ProductVersion>
     <PublishDir Condition="'$(PublishDir)' == ''">..\artifacts\publish\win-x64\</PublishDir>
     <DefineConstants>ProductVersion=$(ProductVersion);PublishDir=$(PublishDir)</DefineConstants>
     <SuppressValidation>false</SuppressValidation>

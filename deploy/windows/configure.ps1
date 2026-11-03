@@ -36,6 +36,8 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 3
+# Text piped to Lims.Host.exe: UTF-8 without a byte order mark.
+$OutputEncoding = New-Object Text.UTF8Encoding $false
 
 function Plain([securestring] $s) {
     $p = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)

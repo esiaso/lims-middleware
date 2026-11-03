@@ -115,6 +115,14 @@ public sealed class SecretResolverTests
         }
     }
 
+    [WindowsFact]
+    public async Task Protect_secret_ignores_a_byte_order_mark_from_Windows_PowerShell()
+    {
+        var output = new StringWriter();
+        Assert.Equal(0, await Lims.Host.LimsCli.RunAsync(["protect-secret"], new StringReader("\uFEFFHost=db;Password=x\r\n"), output, TextWriter.Null));
+        Assert.Equal("Host=db;Password=x", SecretResolver.Resolve(output.ToString().Trim()));
+    }
+
     [Fact]
     public void Dpapi_on_linux_fails_with_a_clear_message()
     {
