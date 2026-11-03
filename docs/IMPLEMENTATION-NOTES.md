@@ -134,8 +134,6 @@ again so `lims_app` gets the new table, then start the service.
 ## Still not built
 
 * Code signing is wired into CI (`docs/CODE-SIGNING.md`) but the build stays unsigned until a certificate is added as a secret.
-* `lims-capture snapshot` replays captures with the generic adapters' default layout only; a flag to load a registered
-  analyzer's definition is not built yet.
 * PowerShell scripts were written for Windows Server 2022 but have only been syntax-reviewed, not run, because no Windows host was available; the MSI is exercised by CI.
 
 ## Open items that block Gate 2

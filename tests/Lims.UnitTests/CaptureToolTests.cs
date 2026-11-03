@@ -157,9 +157,10 @@ public class CaptureReplayTests
         foreach (var parserDir in Directory.GetDirectories(CapturesRoot))
         {
             var parser = Path.GetFileName(parserDir);
+            var replay = Replay.ForFolder(parserDir);
             foreach (var file in Directory.EnumerateFiles(parserDir, "*.msg", SearchOption.AllDirectories))
             {
-                var json = Replay.Snapshot(parser, File.ReadAllBytes(file));
+                var json = Replay.Snapshot(replay, File.ReadAllBytes(file));
                 var expectedPath = Path.ChangeExtension(file, ".expected.json");
                 if (!json.Contains("\"success\": true", StringComparison.Ordinal))
                     failures.Add($"{parser}/{Path.GetFileName(file)} does not parse: {json}");
@@ -171,9 +172,35 @@ public class CaptureReplayTests
     }
 
     [Fact]
-    public void Capture_folders_are_named_after_known_parsers()
+    public void Capture_folders_are_named_after_known_parsers_or_hold_a_definition()
     {
         foreach (var d in Directory.Exists(CapturesRoot) ? Directory.GetDirectories(CapturesRoot) : [])
-            Assert.Contains(Path.GetFileName(d), Lims.Instruments.ParserRegistry.KnownParsers);
+            if (!File.Exists(Path.Combine(d, Replay.DefinitionFile)))
+                Assert.Contains(Path.GetFileName(d), Lims.Instruments.ParserRegistry.BuiltInParsers);
+    }
+
+    [Fact]
+    public void A_registered_analyzer_folder_replays_with_its_definition()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"capture-{Guid.NewGuid():N}", "chem-astm-1");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var d = new Lims.Instruments.Registration.AnalyzerDefinition { InstrumentId = "chem-astm-1", Model = "Example", Protocol = "astm" };
+            d.Profile.AstmTestCode = "R-3.1"; // this analyzer sends the code first, not in component 4
+            File.WriteAllText(Path.Combine(dir, Replay.DefinitionFile), d.ToJson());
+            var msg = System.Text.Encoding.ASCII.GetBytes("H|\\^&\rO|1|S1||^^^GLU\rR|1|GLU|5.4|mmol/L\rL|1\r");
+
+            var json = Replay.Snapshot(Replay.ForFolder(dir), msg);
+            Assert.Contains("\"success\": true", json);
+            Assert.Contains("\"instrumentTestCode\": \"GLU\"", json);
+            // The default layout reads component 4, which this analyzer leaves empty: nothing is read.
+            Assert.DoesNotContain("\"instrumentTestCode\": \"GLU\"", Replay.Snapshot("generic.astm", msg));
+
+            d.Profile.AstmTestCode = "bad";
+            File.WriteAllText(Path.Combine(dir, Replay.DefinitionFile), d.ToJson());
+            Assert.Throws<ArgumentException>(() => Replay.ForFolder(dir));
+        }
+        finally { Directory.Delete(Path.GetDirectoryName(dir)!, true); }
     }
 }
