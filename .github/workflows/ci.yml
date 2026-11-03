@@ -33,6 +33,10 @@ jobs:
 
   windows-msi:
     runs-on: windows-2022
+    env:
+      # Code signing (design 10.2) runs only when both secrets are set. See docs/CODE-SIGNING.md.
+      SIGNING_PFX_BASE64: ${{ secrets.SIGNING_PFX_BASE64 }}
+      SIGNING_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -41,7 +45,31 @@ jobs:
       # Unit tests on Windows include the DPAPI round trip, which is skipped on Linux.
       - run: dotnet test tests/Lims.UnitTests -c Release
       - run: dotnet publish src/Lims.Host -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o artifacts/publish/win-x64
+      - name: Check the signing script with a throwaway certificate
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=LIMS signing test" -CertStoreLocation Cert:\CurrentUser\My
+          $pw = ConvertTo-SecureString "throwaway-test-pw" -AsPlainText -Force
+          $pfx = Join-Path $env:RUNNER_TEMP "test-sign.pfx"
+          Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $pw | Out-Null
+          $copy = Join-Path $env:RUNNER_TEMP "Lims.Host.test.exe"
+          Copy-Item artifacts/publish/win-x64/Lims.Host.exe $copy
+          deploy/signing/sign.ps1 -Files $copy -PfxPath $pfx -PfxPassword $pw -AllowUntrustedRoot
+          Remove-Item $cert.PSPath, $pfx, $copy
+      - name: Sign the service binaries
+        if: env.SIGNING_PFX_BASE64 != '' && env.SIGNING_PFX_PASSWORD != ''
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\sign.pfx", [Convert]::FromBase64String($env:SIGNING_PFX_BASE64))
+          $files = Get-ChildItem artifacts/publish/win-x64 -File | Where-Object { $_.Name -like "Lims.*" -and $_.Extension -in ".exe", ".dll" }
+          deploy/signing/sign.ps1 -Files $files.FullName -PfxPath "$env:RUNNER_TEMP\sign.pfx" -PfxPassword (ConvertTo-SecureString $env:SIGNING_PFX_PASSWORD -AsPlainText -Force)
       - run: dotnet build installer/Lims.Installer.wixproj -c Release -p:PublishDir=${{ github.workspace }}\artifacts\publish\win-x64\
+      - name: Sign the MSI
+        if: env.SIGNING_PFX_BASE64 != '' && env.SIGNING_PFX_PASSWORD != ''
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem installer -Recurse -Filter *.msi | Select-Object -First 1
+          deploy/signing/sign.ps1 -Files $msi.FullName -PfxPath "$env:RUNNER_TEMP\sign.pfx" -PfxPassword (ConvertTo-SecureString $env:SIGNING_PFX_PASSWORD -AsPlainText -Force)
       - name: Install MSI and check the service registration
         shell: pwsh
         run: |
@@ -66,6 +94,12 @@ jobs:
           name: msi
           path: installer/**/bin/**/*.msi
       - run: dotnet publish tools/Lims.Capture -c Release -r win-x64 --self-contained true -o artifacts/publish/lims-capture
+      - name: Sign the capture tool
+        if: env.SIGNING_PFX_BASE64 != '' && env.SIGNING_PFX_PASSWORD != ''
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem artifacts/publish/lims-capture -File | Where-Object { ($_.Name -like "Lims.*" -or $_.Name -eq "lims-capture.exe") -and $_.Extension -in ".exe", ".dll" }
+          deploy/signing/sign.ps1 -Files $files.FullName -PfxPath "$env:RUNNER_TEMP\sign.pfx" -PfxPassword (ConvertTo-SecureString $env:SIGNING_PFX_PASSWORD -AsPlainText -Force)
       - name: Build the offline bundle
         shell: pwsh
         run: |

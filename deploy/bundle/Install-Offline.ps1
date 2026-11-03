@@ -54,6 +54,21 @@ try {
     }
     if ($bad) { throw "The bundle is damaged or was modified; do not install it.`n$($bad -join "`n")" }
 
+    # Signatures. A server without internet access may not be able to build or check the certificate chain, so only a
+    # broken or missing signature, or one from another certificate, stops the install; other statuses are warnings.
+    # The hashes above already prove the files are the ones that were built.
+    function Test-Signature([string] $file, [string] $expectedThumbprint) {
+        $sig = Get-AuthenticodeSignature $file
+        if ($sig.Status -in "HashMismatch", "NotSigned" -or ($expectedThumbprint -and $sig.SignerCertificate.Thumbprint -ne $expectedThumbprint)) {
+            throw "The signature of $(Split-Path $file -Leaf) is $($sig.Status) or from another certificate; do not install it."
+        }
+        if ($sig.Status -ne "Valid") { Write-Warning "$(Split-Path $file -Leaf): signature status $($sig.Status) on this server ($($sig.StatusMessage))" }
+        else { Write-Host "$(Split-Path $file -Leaf) signed by $($sig.SignerCertificate.Subject)" }
+    }
+    if ($bundle.signed.msi) { Test-Signature (Join-Path $root $bundle.msi) $bundle.signed.signerThumbprint }
+    else { Write-Warning "This bundle's MSI is not code-signed." }
+    Test-Signature (Join-Path $root $bundle.postgres.file) $null
+
     # 2. PostgreSQL
     $pg = $bundle.postgres
     $pgService = "postgresql-x64-$($pg.major)"

@@ -73,13 +73,18 @@ Copy-Item (Join-Path $repo "docs\OFFLINE-INSTALL.md") (Join-Path $stage "README-
 Copy-Item -Path (Join-Path $CaptureDir "*") -Destination (Join-Path $stage "tools\lims-capture") -Recurse -Force
 Get-ChildItem $stage -Recurse -Filter *.pdb | Remove-Item
 
+$msiSig = Get-AuthenticodeSignature $Msi
+$signed = [ordered]@{ msi = ($msiSig.Status -eq "Valid"); signer = $null; signerThumbprint = $null }
+if ($signed.msi) { $signed.signer = $msiSig.SignerCertificate.Subject; $signed.signerThumbprint = $msiSig.SignerCertificate.Thumbprint }
+Write-Host "MSI signature: $($msiSig.Status)"
+
 [ordered]@{
     version  = $Version
     commit   = $Commit
     builtAt  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     msi      = "msi/" + (Split-Path $Msi -Leaf)
     postgres = [ordered]@{ major = $pg.major; version = $pg.version; file = "prereqs/$pgFile"; sha256 = $pgHash; source = $pg.url }
-    signed   = [ordered]@{ msi = ((Get-AuthenticodeSignature $Msi).Status -eq "Valid") }
+    signed   = $signed
 } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $stage "bundle.json")
 
 # Hashes of everything except the list itself, with forward-slash relative paths.

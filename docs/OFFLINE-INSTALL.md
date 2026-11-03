@@ -17,8 +17,9 @@ It is built by CI (`windows-msi` job, artifact `offline-bundle`) and carried to 
 | `bundle.json` | Version, commit, build time, PostgreSQL version and hash, whether the MSI is signed |
 | `SHA256SUMS.txt` | SHA-256 of every file in the bundle |
 
-The MSI is **not code-signed** yet (`bundle.json` shows `"msi": false`). Signing needs the hospital's or vendor's
-code-signing certificate.
+The MSI is signed only when CI has a code-signing certificate (`docs/CODE-SIGNING.md`); `bundle.json` shows
+`"msi": true` and the signer when it is. The installer refuses an MSI whose signature is broken or comes from another
+certificate, and warns when the bundle is unsigned.
 
 ## Before you start
 
