@@ -110,7 +110,10 @@ Status as of this branch. Section numbers refer to the design document.
 For each analyzer (e411, c111, BC-5000), at the site visit:
 
 * Installed software version (and for the e411, whether the cobas or Elecsys protocol variant is configured; design 4.1).
-* Real traffic captured in listen-only mode and replayed through the parser tests.
+* Real traffic captured in listen-only mode and replayed through the parser tests. Use `tools/Lims.Capture`
+  (`lims-capture listen|proxy|extract|anonymize|snapshot`); anonymized messages go in `tests/captures/<parser id>/`
+  and `CaptureReplayTests` checks them against their reviewed `.json` snapshots. The step by step checklist for the
+  c111 and BC-5000 visit is a separate document.
 * For the c111: whether host query or batch download is configured, and the test codes in use (the manual's numbers are examples).
 * For the BC-5000: the LIS port and connection direction, the exact "no order" worklist reply and accepted Test Mode values (to be
   confirmed with Mindray), and which parameters the lab reports.
