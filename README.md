@@ -36,7 +36,7 @@ the cobas c 111 and Mindray BC-5000 adapters, the remaining screens of section 8
 | `tools/Lims.Capture` | `lims-capture` site visit tool: listen-only or proxy capture, extract, anonymize, replay snapshot (see `tests/captures/README.md`) |
 | `sim/Lims.Sim.Hmis` | HMIS simulator implementing the proposed lab API (design 6.9) with fault switches |
 | `tests/` | Unit tests (no database) and end-to-end tests against PostgreSQL |
-| `deploy/` | Windows install, backup and restore-drill scripts, PostgreSQL roles and grants |
+| `deploy/` | Windows install, configure, backup and restore-drill scripts, PostgreSQL roles and grants, offline bundle (`deploy/bundle`) |
 | `installer/` | WiX v5 MSI (built on Windows CI) |
 | `docs/IMPLEMENTATION-NOTES.md` | What Phase 1 covers, deviations from the design, and what is left |
 
@@ -106,11 +106,14 @@ Seed the catalog and mappings through the API as a Lab Manager (`POST /api/catal
 
 ## Deploying on Windows
 
+For a server without internet access, use the offline bundle built by CI: see `docs/OFFLINE-INSTALL.md`.
+`Install-Offline.ps1` does the steps below in one run. By hand:
+
 1. Install with `msiexec /i LimsMiddleware-<version>-x64.msi DATADIR=D:\LimsMiddleware CERTTHUMBPRINT=<thumbprint>`.
    The service is registered under `NT SERVICE\LimsMiddleware` and left stopped.
-2. Create the database roles (`deploy/sql/roles.sql`), then `Lims.Host.exe migrate --connection "<owner connection>"` and `deploy/sql/grants.sql`.
-3. Protect each secret on the server: `echo <secret> | "C:\Program Files\LimsMiddleware\Lims.Host.exe" protect-secret`,
-   and put the printed `dpapi-machine:...` values in `appsettings.Local.json` in the install folder.
+2. Run `deploy/windows/configure.ps1`: database roles (`roles.sql`), migrations as `lims_owner`, `grants.sql`, DPAPI-protected
+   secrets in `appsettings.Local.json`, certificate key access and firewall rules. To do it by hand instead: protect each
+   secret with `echo <secret> | "C:\Program Files\LimsMiddleware\Lims.Host.exe" protect-secret`.
 4. Run `deploy/windows/verify.ps1`, start the service, schedule `backup.ps1` (see `docs/BACKUP-RUNBOOK.md`).
 
 ## Key rules the code enforces

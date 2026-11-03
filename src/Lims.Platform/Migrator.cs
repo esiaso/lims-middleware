@@ -29,16 +29,21 @@ public sealed class Migrator(NpgsqlDataSource dataSource, ILogger<Migrator> logg
             .ToList();
     }
 
+    private static Task<bool> CanCreateAsync(NpgsqlConnection conn) =>
+        conn.ExecuteScalarAsync<bool>("SELECT has_database_privilege(current_database(), 'CREATE')");
+
     public async Task MigrateAsync(CancellationToken ct)
     {
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         await conn.ExecuteAsync("SELECT pg_advisory_lock(@k)", new { k = LockKey });
         try
         {
-            await conn.ExecuteAsync("""
-                CREATE TABLE IF NOT EXISTS public.lims_schema_migration (
-                    id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())
-                """);
+            // The service runs as lims_app, which has no CREATE right; IF NOT EXISTS still needs it, so check first.
+            if (await conn.ExecuteScalarAsync<string?>("SELECT to_regclass('public.lims_schema_migration')::text") is null)
+                await conn.ExecuteAsync("""
+                    CREATE TABLE IF NOT EXISTS public.lims_schema_migration (
+                        id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())
+                    """);
             var applied = (await conn.QueryAsync<string>("SELECT id FROM public.lims_schema_migration")).ToHashSet();
             var known = LoadMigrations();
             var unknown = applied.Except(known.Select(k => k.Id)).ToList();
@@ -46,7 +51,13 @@ public sealed class Migrator(NpgsqlDataSource dataSource, ILogger<Migrator> logg
                 throw new InvalidOperationException(
                     $"Database has migrations this build does not know ({string.Join(", ", unknown)}). Refusing to start an older build against a newer schema.");
 
-            foreach (var (id, sql) in known.Where(k => !applied.Contains(k.Id)))
+            var pending = known.Where(k => !applied.Contains(k.Id)).ToList();
+            if (pending.Count > 0 && !await CanCreateAsync(conn))
+                throw new InvalidOperationException(
+                    $"Migrations {string.Join(", ", pending.Select(p => p.Id))} are pending and this account cannot apply them. " +
+                    "Run 'Lims.Host.exe migrate --connection <lims_owner connection>' and deploy/sql/grants.sql, then start the service.");
+
+            foreach (var (id, sql) in pending)
             {
                 await using var tx = await conn.BeginTransactionAsync(ct);
                 await conn.ExecuteAsync(sql, transaction: tx);

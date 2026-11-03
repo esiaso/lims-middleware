@@ -1,0 +1,8 @@
+{
+  "postgres": {
+    "major": 17,
+    "version": "17.6-1",
+    "url": "https://get.enterprisedb.com/postgresql/postgresql-17.6-1-windows-x64.exe",
+    "sha256": ""
+  }
+}

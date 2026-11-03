@@ -1,4 +1,5 @@
 -- Run as lims_owner after migrations. The application role gets DML only, and INSERT-only on audit.
+GRANT USAGE ON SCHEMA public TO lims_app, lims_readonly; -- roles.sql revokes it from PUBLIC; needed to read lims_schema_migration
 GRANT USAGE ON SCHEMA platform, audit, messaging, instruments, clinical, hmis TO lims_app, lims_readonly;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA platform, messaging, instruments, clinical, hmis TO lims_app;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA platform, messaging, instruments, clinical, hmis, audit TO lims_app;

@@ -100,9 +100,23 @@ Status as of this branch. Section numbers refer to the design document.
 **Upgrading an existing install:** stop the service, run `Lims.Host.exe migrate` (adds migrations 0004 panels and
 0005 autoverification), run `deploy/sql/grants.sql` again so `lims_app` gets the new table, then start the service.
 
+## Offline install bundle (PR #5)
+
+* `deploy/bundle/build-bundle.ps1` (run by the `windows-msi` CI job) packs the MSI, the EDB PostgreSQL 17 installer
+  (hash pinned in `deploy/bundle/prereqs.json`, Authenticode signature checked), the `lims-capture` tool, the deploy
+  scripts and docs, with `SHA256SUMS.txt` and `bundle.json`. No .NET runtime is included because the service is self-contained.
+* `Install-Offline.ps1` checks every hash, installs PostgreSQL (localhost only), the MSI, runs `configure.ps1`, starts the
+  service and runs `verify.ps1`. CI installs the bundle end to end on Windows Server 2022 with Windows PowerShell 5.1,
+  checks that a modified bundle is refused, and runs `configure.ps1` a second time.
+* `deploy/windows/configure.ps1` was referenced by `install.ps1` and `roles.sql` but did not exist; it does now.
+* Fixed while testing the install: the service could not start as `lims_app`, because the startup migration check ran
+  `CREATE TABLE IF NOT EXISTS` (which needs the CREATE right) and `lims_app` had no USAGE on schema `public`.
+  The check now looks before creating, `grants.sql` grants USAGE on `public`, and with pending migrations the service
+  says to run `migrate` as `lims_owner` (`DeploymentRolesTests`).
+
 ## Still not built
 
-* Code signing of the MSI and an offline bundle with PostgreSQL and the .NET prerequisites.
+* Code signing of the MSI (needs the hospital's or vendor's code-signing certificate).
 * PowerShell scripts were written for Windows Server 2022 but have only been syntax-reviewed, not run, because no Windows host was available; the MSI is exercised by CI.
 
 ## Open items that block Gate 2
