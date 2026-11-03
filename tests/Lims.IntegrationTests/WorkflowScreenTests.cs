@@ -48,7 +48,7 @@ public sealed partial class EndToEndTests
             var (o2, hmisOrder2, _) = await NewOrderAsync("GLU");
             var s2 = await CollectAndAcceptAsync(o2);
             await SendC111Async(C111Messages.Results(s2.Barcode, [new SimResult("989", "4.8", "mmol/L")], DateTime.Now.AddSeconds(Interlocked.Increment(ref _seq))));
-            var r2 = await LimsFixture.WaitFor(async () =>
+            var found = await LimsFixture.WaitFor(async () =>
             {
                 await using var c = await f.OpenAsync();
                 return await c.QuerySingleOrDefaultAsync<(Guid Id, string Actor, Guid? Rule)?>("""
@@ -58,9 +58,11 @@ public sealed partial class EndToEndTests
                     WHERE s.barcode=@b AND r.status='approved'
                     """, new { b = s2.Barcode });
             }, what: "autoverified result");
-            Assert.Equal("autoverify:GLU:v1", r2.Value.Actor);
-            Assert.Equal(ruleId, r2.Value.Rule);
-            await WaitForDeliveryAsync(r2.Value.Id);
+            Assert.True(found.HasValue);
+            var r2 = found.GetValueOrDefault();
+            Assert.Equal("autoverify:GLU:v1", r2.Actor);
+            Assert.Equal(ruleId, r2.Rule);
+            await WaitForDeliveryAsync(r2.Id);
             Assert.Equal("autoverify:GLU:v1", f.HmisState.AllResults().Single(r => r.Item.OrderId == hmisOrder2).Item.ApprovedBy);
 
             // Outside the limits: waits for a person.
