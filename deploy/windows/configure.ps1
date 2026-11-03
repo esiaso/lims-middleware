@@ -65,11 +65,11 @@ function Invoke-Psql([string] $user, [string] $password, [string] $database, [st
 function Set-Json($obj, [string] $path, $value) {
     $parts = $path.Split(":")
     for ($i = 0; $i -lt $parts.Length - 1; $i++) {
-        if (-not ($obj.PSObject.Properties.Name -contains $parts[$i])) { $obj | Add-Member -NotePropertyName $parts[$i] -NotePropertyValue ([pscustomobject]@{}) }
+        if ($null -eq $obj.PSObject.Properties[$parts[$i]]) { $obj | Add-Member -NotePropertyName $parts[$i] -NotePropertyValue ([pscustomobject]@{}) }
         $obj = $obj.($parts[$i])
     }
     $leaf = $parts[-1]
-    if ($obj.PSObject.Properties.Name -contains $leaf) { $obj.$leaf = $value } else { $obj | Add-Member -NotePropertyName $leaf -NotePropertyValue $value }
+    if ($null -ne $obj.PSObject.Properties[$leaf]) { $obj.$leaf = $value } else { $obj | Add-Member -NotePropertyName $leaf -NotePropertyValue $value }
 }
 function Grant-CertificateKey([string] $thumbprint, [string] $account) {
     $cert = Get-Item "Cert:\LocalMachine\My\$($thumbprint -replace '\s','')" -ErrorAction SilentlyContinue
@@ -78,7 +78,7 @@ function Grant-CertificateKey([string] $thumbprint, [string] $account) {
     $rsa = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
     $name = $null
     if ($rsa -is [Security.Cryptography.RSACng]) { $name = $rsa.Key.UniqueName; $dirs = "$env:ProgramData\Microsoft\Crypto\Keys" }
-    elseif ($rsa.PSObject.Properties.Name -contains "CspKeyContainerInfo") { $name = $rsa.CspKeyContainerInfo.UniqueKeyContainerName; $dirs = "$env:ProgramData\Microsoft\Crypto\RSA\MachineKeys" }
+    elseif ($null -ne $rsa.PSObject.Properties["CspKeyContainerInfo"]) { $name = $rsa.CspKeyContainerInfo.UniqueKeyContainerName; $dirs = "$env:ProgramData\Microsoft\Crypto\RSA\MachineKeys" }
     if (-not $name) { throw "Cannot locate the private key of $thumbprint (only RSA keys are handled)" }
     $file = Join-Path $dirs $name
     if (-not (Test-Path $file)) { $file = Join-Path "$env:ProgramData\Microsoft\Crypto\RSA\MachineKeys" $name }
