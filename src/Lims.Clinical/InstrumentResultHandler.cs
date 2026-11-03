@@ -15,11 +15,11 @@ namespace Lims.Clinical;
 /// barcode, apply the active mapping, and create result version 1 in "received". Anything ambiguous is
 /// quarantined with a reason; nothing is dropped silently.
 /// </summary>
-public sealed class InstrumentResultHandler(IInstrumentParserResolver parsers, AuditWriter audit) : IInboxHandler
+public sealed class InstrumentResultHandler(IInstrumentParserResolver parsers, AuditWriter audit, AutoverificationService autoverify) : IInboxHandler
 {
     public static readonly TimeSpan DuplicateWindow = TimeSpan.FromDays(7);
 
-    public bool CanHandle(string source, string kind) => source == MessageSources.Instrument && kind == InboxKinds.AstmMessage;
+    public bool CanHandle(string source, string kind) => source == MessageSources.Instrument && kind is InboxKinds.AstmMessage or InboxKinds.Hl7Message;
 
     public async Task<InboxResult> HandleAsync(InboxItem item, NpgsqlConnection conn, NpgsqlTransaction tx, CancellationToken ct)
     {
@@ -207,6 +207,15 @@ public sealed class InstrumentResultHandler(IInstrumentParserResolver parsers, A
                 }
             }
 
+            if (reason == "code not reportable")
+            {
+                // Mapped on purpose as not reportable (for example BC-5000 research parameters the lab does not report):
+                // kept for traceability, closed at once so it never sits in the exceptions queue.
+                var kept = await InsertInstrumentResultAsync(conn, tx, item, g, r, fingerprint, "quarantined", reason, null, mapping?.Id);
+                await conn.ExecuteAsync("UPDATE clinical.instrument_result SET resolved_at=now(), resolved_by='system:not-reportable' WHERE id=@kept",
+                    new { kept }, tx);
+                continue;
+            }
             if (reason is not null)
             {
                 await InsertInstrumentResultAsync(conn, tx, item, g, r, fingerprint, "quarantined", reason, specimenTestId, mapping?.Id);
@@ -261,6 +270,7 @@ public sealed class InstrumentResultHandler(IInstrumentParserResolver parsers, A
             await audit.WriteAsync(conn, tx, new AuditEntry("system:inbox", "result.received", "result", resultId.ToString(),
                 Accession: specimen.Accession, PatientId: specimen.Mrn, CorrelationId: item.CorrelationId,
                 After: new { code = catalog!.Code, value = value.ValueText, value.Units, version, mapping = mapping.Id, rerun = r.IsRerun }));
+            await autoverify.TryAutoverifyAsync(conn, tx, resultId);
         }
     }
 

@@ -38,4 +38,25 @@ public sealed class MappingService(Db db, AuditWriter audit)
                 new { mappingId, user }, tx);
             await audit.WriteAsync(conn, tx, new AuditEntry(user, "mapping.approved", "test_mapping", mappingId.ToString()));
         }, ct);
+
+    /// <summary>Roll back: proposes an earlier mapping version again; a different Lab Manager must approve it.</summary>
+    public async Task<Guid> ProposeRollbackAsync(Guid mappingId, string user, CancellationToken ct)
+    {
+        MappingProposal p;
+        int version;
+        await using (var conn = await db.OpenAsync(ct))
+        {
+            var row = await conn.QuerySingleOrDefaultAsync<(string InstrumentId, string InstrumentCode, string CatalogCode, string ResultType,
+                decimal UnitFactor, string? InstrumentUnit, bool Reportable, string Status, int Version)?>("""
+                SELECT instrument_id, instrument_code, catalog_code, result_type, unit_factor, instrument_unit, reportable, status, version
+                FROM instruments.test_mapping WHERE id=@mappingId
+                """, new { mappingId }) ?? throw new WorkflowException("Mapping not found");
+            if (row.Status == "active") throw new WorkflowException("That version is already active");
+            p = new MappingProposal(row.InstrumentId, row.InstrumentCode, row.CatalogCode, row.ResultType, row.UnitFactor, row.InstrumentUnit, row.Reportable);
+            version = row.Version;
+        }
+        var id = await ProposeAsync(p, user, ct);
+        await audit.WriteAsync(db, new AuditEntry(user, "mapping.rollback_proposed", "test_mapping", id.ToString(), Reason: $"restores v{version} ({mappingId})"), ct);
+        return id;
+    }
 }

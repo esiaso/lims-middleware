@@ -1,0 +1,36 @@
+@page
+@model Lims.Host.Pages.AnalyzersModel
+@{ ViewData["Title"] = "Analyzers"; }
+<h1>Analyzers and worklists</h1>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+<p><small>Every analyzer interface is DOCUMENTED from the vendor manual and NOT interface-tested on the installed instrument until the site verification is signed off.</small></p>
+@foreach (var a in Model.Analyzers)
+{
+  <section class="panel">
+  <h2>@a.Config.Id <small>@a.Config.Model · @a.Config.Parser · @a.Verification</small></h2>
+  <p>Link: <span class="badge">@a.Health.State</span> @(a.Health.Paused ? $"PAUSED by {a.Health.PausedBy}" : "")
+     · last message @(a.Health.LastMessageAt?.ToString("u") ?? "none") · @a.Health.MessagesToday today
+     @if (a.Health.LastError is not null) { <span class="err">· @a.Health.LastError</span> }</p>
+
+  <h3>Pending worklist (@a.Worklist.Count)</h3>
+  <p><a href="/LoadList?instrument=@a.Config.Id" target="_blank">Print load list</a></p>
+  <table><tr><th>Accession</th><th>Patient</th><th>Priority</th><th>Tests</th><th>Received</th><th></th></tr>
+  @foreach (var w in a.Worklist)
+  {
+    <tr><td>@w.accession</td><td>@w.initials @w.birth_year</td><td>@w.priority</td><td>@w.tests</td><td>@(w.received_at is DateTime r ? r.ToString("u") : "")</td>
+    <td>@if (a.Config.HostQuery && (User.IsInRole(Roles.Technologist) || User.IsInRole(Roles.IntegrationOperator)))
+        { <form method="post" asp-page-handler="Resend" class="inline"><input type="hidden" name="instrumentId" value="@a.Config.Id"><input type="hidden" name="barcode" value="@w.barcode"><button>Resend order</button></form> }</td></tr>
+  }
+  </table>
+
+  <details><summary>Last messages (metadata only)</summary>
+  <table><tr><th>Received</th><th>Kind</th><th>Status</th><th>Bytes</th><th>Error</th><th>Correlation</th></tr>
+  @foreach (var m in a.Messages) { <tr><td>@(((DateTime)m.received_at).ToString("u"))</td><td>@m.kind</td><td>@m.status</td><td>@m.bytes</td><td>@m.last_error</td><td><a href="/AuditLog?correlationId=@m.correlation_id">@m.correlation_id</a></td></tr> }
+  </table></details>
+
+  <details @(a.Qc.Count > 0 ? "open" : "")><summary>QC received today (@a.Qc.Count)</summary>
+  <table><tr><th>Received</th><th>Control</th><th>Lot</th><th>Code</th><th>Value</th><th>Flags</th></tr>
+  @foreach (var q in a.Qc) { <tr><td>@(((DateTime)q.received_at).ToString("u"))</td><td>@q.control_name</td><td>@q.control_lot</td><td>@q.instrument_test_code</td><td>@q.raw_value @q.units</td><td>@string.Join(", ", (string[])q.flags)</td></tr> }
+  </table></details>
+  </section>
+}

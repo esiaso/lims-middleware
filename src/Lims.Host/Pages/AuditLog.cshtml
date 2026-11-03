@@ -2,16 +2,31 @@
 @model Lims.Host.Pages.AuditLogModel
 @{ ViewData["Title"] = "Audit"; }
 <h1>Audit search</h1>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
 <form method="get">
   <input name="accession" value="@Model.Accession" placeholder="Accession">
   <input name="patient" value="@Model.Patient" placeholder="MRN">
+  <input name="instrument" value="@Model.Instrument" placeholder="Instrument (e411-1)">
   <input name="actor" value="@Model.Actor" placeholder="User">
   <input name="correlationId" value="@Model.CorrelationId" placeholder="Correlation ID">
   <input name="entityId" value="@Model.EntityId" placeholder="Entity ID">
+  <input name="action" value="@Model.Action" placeholder="Action (result. for all)">
   <input name="from" type="date" value="@Model.From?.ToString("yyyy-MM-dd")"> to <input name="to" type="date" value="@Model.To?.ToString("yyyy-MM-dd")">
   <button>Search</button>
 </form>
+<p>
 <form method="post" asp-page-handler="Verify" class="inline"><button>Verify audit chain</button></form>
+<form method="post" asp-page-handler="Export" class="inline">
+  <input type="hidden" name="accession" value="@Model.Accession"><input type="hidden" name="patient" value="@Model.Patient">
+  <input type="hidden" name="instrument" value="@Model.Instrument"><input type="hidden" name="actor" value="@Model.Actor">
+  <input type="hidden" name="correlationId" value="@Model.CorrelationId"><input type="hidden" name="entityId" value="@Model.EntityId">
+  <input type="hidden" name="action" value="@Model.Action">
+  <input type="hidden" name="from" value="@Model.From?.ToString("yyyy-MM-dd")"><input type="hidden" name="to" value="@Model.To?.ToString("yyyy-MM-dd")">
+  <select name="format"><option value="csv">CSV</option><option value="json">JSON</option></select>
+  <button>Export with signature</button>
+</form>
+<small>The export holds every matching event (not only the 500 shown), a manifest and its HMAC signature. Check it with <code>LimsMiddleware verify-export</code>.</small>
+</p>
 @if (Model.Verification is not null)
 {
   <p class="@(Model.Verification.Valid ? "" : "err")">Chain @(Model.Verification.Valid ? "valid" : "BROKEN") after @Model.Verification.RowsChecked rows. @Model.Verification.Problem @(Model.Verification.FirstBadSeq is null ? "" : $"(seq {Model.Verification.FirstBadSeq})")</p>
@@ -20,6 +35,6 @@
 <tr><th>#</th><th>Time (UTC)</th><th>User</th><th>Action</th><th>Entity</th><th>Accession</th><th>Patient</th><th>Reason</th><th>Change</th></tr>
 @foreach (var e in Model.Rows)
 {
-  <tr><td>@e.seq</td><td>@(((DateTime)e.occurred_at).ToString("u"))</td><td>@e.actor</td><td>@e.action</td><td>@e.entity_type @e.entity_id</td><td>@e.accession</td><td>@e.patient_id</td><td>@e.reason</td><td><small>@e.before @e.after</small></td></tr>
+  <tr><td>@e.Seq</td><td>@e.OccurredAt.ToString("u")</td><td>@e.Actor</td><td>@e.Action</td><td>@e.EntityType @e.EntityId</td><td>@e.Accession</td><td>@e.PatientId</td><td>@e.Reason</td><td><small>@e.Before @e.After</small></td></tr>
 }
 </table>

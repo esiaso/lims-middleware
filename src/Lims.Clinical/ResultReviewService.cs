@@ -94,8 +94,15 @@ public sealed class ResultReviewService(Db db, AuditWriter audit, OutboxStore ou
 
     /// <param name="deltaComment">For a delta-flagged result: the approver's confirmation, recorded as a review comment.</param>
     public Task<Guid> ApproveAsync(Guid resultId, string user, CriticalNotification? critical, CancellationToken ct, string? deltaComment = null) =>
-        db.InTransactionAsync(async (conn, tx) =>
-        {
+        db.InTransactionAsync((conn, tx) => ApproveInTransactionAsync(conn, tx, resultId, user, critical, deltaComment, null), ct);
+
+    /// <summary>
+    /// The approval itself, inside the caller's transaction. Autoverification calls it from the inbox transaction with the
+    /// rule version as approver, so an autoverified result is stored, approved and queued for the HMIS atomically.
+    /// </summary>
+    internal async Task<Guid> ApproveInTransactionAsync(NpgsqlConnection conn, NpgsqlTransaction tx, Guid resultId, string user,
+        CriticalNotification? critical, string? deltaComment, Guid? autoverifyRuleId)
+    {
             var r = await LoadAsync(conn, tx, resultId);
             if (r.Status is not ("received" or "reviewed")) throw new WorkflowException($"Result cannot be approved from status {r.Status}");
             if (!options.Value.AllowApproveOwnReview)
@@ -123,9 +130,9 @@ public sealed class ResultReviewService(Db db, AuditWriter audit, OutboxStore ou
 
             var approvalId = Guid.CreateVersion7();
             await conn.ExecuteAsync("""
-                INSERT INTO clinical.review (id, result_id, action, actor, critical_notified_to, critical_method, critical_notified_at, critical_read_back)
-                VALUES (@approvalId, @resultId, 'approve', @user, @to, @method, @at, @rb)
-                """, new { approvalId, resultId, user, to = critical?.NotifiedPerson, method = critical?.Method, at = critical?.NotifiedAt.UtcDateTime, rb = critical?.ReadBackDone }, tx);
+                INSERT INTO clinical.review (id, result_id, action, actor, critical_notified_to, critical_method, critical_notified_at, critical_read_back, autoverify_rule_id)
+                VALUES (@approvalId, @resultId, 'approve', @user, @to, @method, @at, @rb, @autoverifyRuleId)
+                """, new { approvalId, resultId, user, to = critical?.NotifiedPerson, method = critical?.Method, at = critical?.NotifiedAt.UtcDateTime, rb = critical?.ReadBackDone, autoverifyRuleId }, tx);
             await conn.ExecuteAsync("UPDATE clinical.result SET status='approved' WHERE id=@resultId", new { resultId }, tx);
             await conn.ExecuteAsync("UPDATE clinical.order_test SET status='released' WHERE id=(SELECT order_test_id FROM clinical.specimen_test WHERE id=@st)",
                 new { st = r.SpecimenTestId }, tx);
@@ -133,11 +140,11 @@ public sealed class ResultReviewService(Db db, AuditWriter audit, OutboxStore ou
             var held = r.IsDowntime && r.LinkedHmisOrderId is null;
             if (!held) await EnqueueDeliveryAsync(conn, tx, r, approvalId, user);
 
-            await audit.WriteAsync(conn, tx, new AuditEntry(user, "result.approved", "result", resultId.ToString(),
+            await audit.WriteAsync(conn, tx, new AuditEntry(user, autoverifyRuleId is null ? "result.approved" : "result.autoverified", "result", resultId.ToString(),
                 Accession: r.Accession, PatientId: r.Mrn,
-                After: new { r.ValueText, r.Units, r.Version, critical = critical is null ? null : new { critical.NotifiedPerson, critical.Method, critical.NotifiedAt }, held_for_downtime_link = held }));
+                After: new { r.ValueText, r.Units, r.Version, critical = critical is null ? null : new { critical.NotifiedPerson, critical.Method, critical.NotifiedAt }, held_for_downtime_link = held, autoverify_rule = autoverifyRuleId }));
             return approvalId;
-        }, ct);
+    }
 
     private async Task EnqueueDeliveryAsync(NpgsqlConnection conn, NpgsqlTransaction tx, ResultCtx r, Guid approvalId, string approver)
     {

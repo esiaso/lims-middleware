@@ -16,6 +16,9 @@ public interface IFrameJournal
     /// <summary>Journals the last frame of a message and stores the assembled message in the inbox, in one transaction.</summary>
     Task<Guid> CommitMessageAsync(string instrumentId, LinkFrame lastFrame, byte[] message, string correlationId, CancellationToken ct);
 
+    /// <summary>Stores a whole message received in one piece (HL7 over MLLP) in the inbox before it is acknowledged.</summary>
+    Task<Guid> CommitWholeMessageAsync(string instrumentId, string kind, byte[] message, string correlationId, CancellationToken ct);
+
     Task MarkIncompleteAsync(string instrumentId, Guid sessionId, CancellationToken ct);
 
     Task RecordOutboundAsync(string instrumentId, string kind, byte[] message, string correlationId, string outcome, CancellationToken ct);

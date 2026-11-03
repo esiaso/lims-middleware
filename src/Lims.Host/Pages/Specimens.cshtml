@@ -1,0 +1,47 @@
+@page
+@model Lims.Host.Pages.SpecimensModel
+@{ ViewData["Title"] = "Specimens"; }
+<h1>Specimen tracking and labels</h1>
+@if (Model.Message is not null) { <p class="err">@Model.Message</p> }
+<form method="get"><input name="q" value="@Model.Q" placeholder="Accession, MRN or HMIS order"><button>Search</button></form>
+
+@if (Model.Selected is not null)
+{
+  var s = Model.Selected;
+  <section class="panel">
+  <h2>@s.accession <span class="badge">@s.status</span></h2>
+  <p>@s.family_name, @s.given_name (MRN @s.mrn) · order @s.hmis_order_id · @s.specimen_type
+  @if (s.rejection_reason is not null) { <span class="err"><br>Rejected: @s.rejection_reason</span> }
+  @if (s.recollection_of is not null) { <span><br>Recollection of <a href="?accession=@s.recollection_of">@s.recollection_of</a></span> }
+  @if (s.recollected_as is not null) { <span><br>Recollected as <a href="?accession=@s.recollected_as">@s.recollected_as</a></span> }</p>
+  @if (User.IsInRole(Roles.Technologist))
+  {
+    <p>
+    <form method="post" asp-page-handler="Accept" class="inline"><input type="hidden" name="accession" value="@s.accession"><button>Accept</button></form>
+    <form method="post" asp-page-handler="Reject" class="inline"><input type="hidden" name="accession" value="@s.accession">
+      <select name="reason">@foreach (var r in Model.Reasons) { <option>@r</option> }</select><button>Reject</button></form>
+    <form method="post" asp-page-handler="Recollect" class="inline"><input type="hidden" name="accession" value="@s.accession"><input name="reason" placeholder="Reason" required><button>Request recollection</button></form>
+    <form method="post" asp-page-handler="Reprint" class="inline"><input type="hidden" name="accession" value="@s.accession"><button>Reprint label</button></form>
+    </p>
+  }
+  @if (Model.Zpl is not null) { <details><summary>Label (ZPL)</summary><pre>@Model.Zpl</pre></details> }
+  <h3>Tests</h3>
+  <table><tr><th>Test</th><th>Panel</th><th>Instrument</th><th>Test status</th><th>Latest result</th></tr>
+  @foreach (var t in Model.Tests) { <tr><td>@t.catalog_code</td><td>@t.panel_code</td><td>@t.instrument_id</td><td>@t.status</td><td>@t.result_status</td></tr> }
+  </table>
+  <h3>Timeline</h3>
+  <table><tr><th>When (UTC)</th><th>Who</th><th>What</th><th>Reason</th></tr>
+  @foreach (var e in Model.Timeline) { <tr><td>@(((DateTime)e.occurred_at).ToString("u"))</td><td>@e.actor</td><td>@e.action</td><td>@e.reason</td></tr> }
+  </table>
+  </section>
+}
+
+<h2>Specimens</h2>
+<table>
+<tr><th>Accession</th><th>MRN</th><th>HMIS order</th><th>Type</th><th>Status</th><th>Collected</th></tr>
+@foreach (var r in Model.Rows)
+{
+  <tr><td><a href="?accession=@r.accession&q=@Model.Q">@r.accession</a></td><td>@r.mrn</td><td>@r.hmis_order_id</td><td>@r.specimen_type</td>
+  <td>@r.status @if (r.rejection_reason is not null) { <small>(@r.rejection_reason)</small> }</td><td>@(r.collected_at is DateTime c ? c.ToString("u") : "")</td></tr>
+}
+</table>

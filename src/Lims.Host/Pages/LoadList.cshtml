@@ -1,0 +1,23 @@
+@page
+@model Lims.Host.Pages.LoadListModel
+@{ Layout = null; }
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Load list @Model.Instrument</title>
+<style>
+  body { font: 12pt/1.3 system-ui, "Segoe UI", sans-serif; margin: 1cm; color:#000; background:#fff; }
+  table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #000; padding: 3px 6px; text-align: left; }
+  .bc { font-family: "Libre Barcode 128", monospace; font-size: 11pt; }
+  @@media print { button { display: none; } }
+</style></head>
+<body>
+<h1>Load list: @Model.Instrument</h1>
+<p>Printed @Model.PrintedAt.ToString("yyyy-MM-dd HH:mm") EAT by @User.Identity!.Name · @Model.Rows.Count specimens · load in this order (STAT first)</p>
+<button onclick="window.print()">Print</button>
+<table><tr><th>#</th><th>Accession</th><th>Barcode</th><th>Initials</th><th>Birth year</th><th>Priority</th><th>Tests</th><th>Loaded</th></tr>
+@{ var i = 1; }
+@foreach (var r in Model.Rows)
+{
+  <tr><td>@(i++)</td><td><strong>@r.accession</strong></td><td class="bc">@r.barcode</td><td>@r.initials</td><td>@r.birth_year</td><td>@r.priority</td><td>@r.tests</td><td>&#9744;</td></tr>
+}
+</table>
+</body></html>

@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\Lims.Host\Lims.Host.csproj" />
     <ProjectReference Include="..\..\sim\Lims.Sim.E411\Lims.Sim.E411.csproj" />
     <ProjectReference Include="..\..\sim\Lims.Sim.Hmis\Lims.Sim.Hmis.csproj" />
+    <ProjectReference Include="..\..\sim\Lims.Sim.Bc5000\Lims.Sim.Bc5000.csproj" />
   </ItemGroup>
 
 </Project>

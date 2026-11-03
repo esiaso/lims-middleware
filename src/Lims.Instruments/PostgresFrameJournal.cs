@@ -41,6 +41,13 @@ public sealed class PostgresFrameJournal(Db db, InboxStore inbox, StorageGate st
             return id;
         }, ct);
 
+    public Task<Guid> CommitWholeMessageAsync(string instrumentId, string kind, byte[] message, string correlationId, CancellationToken ct) =>
+        db.InTransactionAsync(async (conn, tx) =>
+        {
+            var (id, _) = await inbox.InsertAsync(conn, tx, MessageSources.Instrument, instrumentId, kind, message, correlationId);
+            return id;
+        }, ct);
+
     public async Task MarkIncompleteAsync(string instrumentId, Guid sessionId, CancellationToken ct)
     {
         await using var conn = await db.OpenAsync(ct);

@@ -4,12 +4,20 @@ Middleware between the hospital's in-house HMIS (Laravel/MySQL) and the laborato
 orders, accessions specimens and prints Zebra labels, talks to analyzers through versioned adapters, holds every
 result for human approval, and delivers approved results to the HMIS with idempotent, confirmed delivery.
 
-This is **Phase 1 (MVP)** of the design document "LIMS Middleware Design: HMIS to Analyzers", section 12.
+It implements the design document "LIMS Middleware Design: HMIS to Analyzers": Phase 1 (MVP), the go-live items,
+the cobas c 111 and Mindray BC-5000 adapters, the remaining screens of section 8, and autoverification (off at install).
 
-> **Compatibility status.** The Roche cobas e 411 adapter is built from the cobas e 411 Host Interface Manual
-> v2.2 (November 2013). It is **DOCUMENTED, not interface-tested** on an installed analyzer. Nothing in this
-> repository may be called compatible with any instrument until the on-site Gate 2 verification (design 11.3)
-> is signed for that model, software version and configuration.
+> **Compatibility status.** Every analyzer adapter is built from the vendor's manual and is **DOCUMENTED, not
+> interface-tested** on an installed analyzer:
+>
+> | Analyzer | Source document | Protocol |
+> | --- | --- | --- |
+> | Roche cobas e 411 | cobas e 411 Host Interface Manual v2.2 (November 2013) | ASTM E1381/E1394 |
+> | Roche cobas c 111 | cobas c 111 Host Interface Manual v2.2 (June 2021, software 3.0 and higher) | ASTM E1381/E1394 |
+> | Mindray BC-5000 | BC-5000 "3107 HL7 Communication Protocol" V2.0 | HL7 v2.3.1 over MLLP |
+>
+> Nothing in this repository may be called compatible with any instrument until the on-site Gate 2 verification
+> (design 11.3) is signed for that model, software version and configuration.
 
 ## Layout
 
@@ -19,11 +27,12 @@ This is **Phase 1 (MVP)** of the design document "LIMS Middleware Design: HMIS t
 | `src/Lims.Platform` | Database access, SQL migrations, accession numbers, TOTP, retry schedule, roles |
 | `src/Lims.Audit` | Hash-chained, append-only audit writer, chain verifier, external export with hourly anchors |
 | `src/Lims.Messaging` | Inbox/outbox tables claimed with `FOR UPDATE SKIP LOCKED`, inbox processor, dead letter |
-| `src/Lims.Instruments` | ASTM E1381 link state machine, e411 parser and host-query reply, transports (TCP, serial), mappings |
-| `src/Lims.Clinical` | Order registration, specimens and labels, result matching, review, approval, corrections, downtime |
+| `src/Lims.Instruments` | ASTM E1381 link and HL7/MLLP link, e411, c111 and BC-5000 parsers, query replies, order download, transports (TCP, serial), mappings |
+| `src/Lims.Clinical` | Order registration (with panels), specimens, labels and recollection, result matching, review, approval, autoverification, corrections, downtime |
 | `src/Lims.Hmis` | REST client (OAuth client credentials, rate limit), order poller, webhook events, outbox dispatcher with read-back |
 | `src/Lims.Host` | ASP.NET Core host (Windows Service), API, local accounts with MFA, Razor Pages screens, health |
-| `sim/Lims.Sim.E411` | cobas e 411 simulator (plays the analyzer behind a serial device server) |
+| `sim/Lims.Sim.E411` | cobas e 411 and c 111 simulator (plays the analyzer behind a serial device server) |
+| `sim/Lims.Sim.Bc5000` | Mindray BC-5000 simulator (connects to the middleware over MLLP, like the analyzer) |
 | `sim/Lims.Sim.Hmis` | HMIS simulator implementing the proposed lab API (design 6.9) with fault switches |
 | `tests/` | Unit tests (no database) and end-to-end tests against PostgreSQL |
 | `deploy/` | Windows install, backup and restore-drill scripts, PostgreSQL roles and grants |
@@ -52,6 +61,12 @@ refusing an unapproved outbox row, and audit tamper detection, plus the go-live 
 the low-disk link refusal, catalog sync approval, exception resolve and the admin CLI. Unit tests cover secret
 references, syslog over TLS against an in-process TLS server, and Kestrel HTTPS with a self-signed PFX.
 
+The fixture also runs a cobas c 111 (ASTM, host query and order download) and a BC-5000 (HL7, the analyzer connects
+to the middleware) next to the e411. Those tests cover the c111 query, results and QC; a CBC panel ordered once in
+the HMIS, run on the BC-5000 and delivered per parameter on the same HMIS line; panel cancellation; a paused link;
+autoverification with and without QC; recollection; catalog and mapping rollback; the signed audit export and its
+tamper check; and a sign-in that renders every screen.
+
 ## Run locally with the simulators
 
 ```bash
@@ -63,6 +78,9 @@ dotnet run --project sim/Lims.Sim.E411 -- --port 4001 query 261102000427
 
 # 3. Middleware (put secrets in src/Lims.Host/appsettings.Local.json, which git ignores)
 dotnet run --project src/Lims.Host
+
+# Optional: BC-5000 simulator, connecting to the middleware's MLLP port 5100 (Transport.Mode TcpServer)
+dotnet run --project sim/Lims.Sim.Bc5000 -- --port 5100 result 261103000101
 ```
 
 Example `appsettings.Local.json`:
@@ -72,7 +90,13 @@ Example `appsettings.Local.json`:
   "ConnectionStrings": { "Lims": "Host=localhost;Database=lims;Username=lims_app;Password=..." },
   "Bootstrap": { "AdminUsername": "admin", "AdminPassword": "change-me-at-least-12" },
   "Hmis": { "ClientSecret": "sim-secret", "WebhookSecret": "sim-webhook-secret" },
-  "Instruments": { "Instruments": [ { "Id": "e411-1", "Enabled": true, "Transport": { "Mode": "TcpClient", "Host": "127.0.0.1", "Port": 4001 } } ] }
+  "Instruments": { "Instruments": [
+    { "Id": "e411-1", "Parser": "roche.cobas-e411.astm", "Transport": { "Mode": "TcpClient", "Host": "127.0.0.1", "Port": 4001 } },
+    { "Id": "c111-1", "Parser": "roche.cobas-c111.astm", "Model": "cobas c 111", "Transport": { "Mode": "TcpClient", "Host": "127.0.0.1", "Port": 4002 } },
+    { "Id": "bc5000-1", "Parser": "mindray.bc5000.hl7", "Model": "Mindray BC-5000", "Transport": { "Mode": "TcpServer", "Host": "0.0.0.0", "Port": 5100 } }
+  ] },
+  "AuditExport": { "SigningKey": "dpapi-machine:..." },
+  "Backup": { "Directory": "E:\\LimsBackup" }
 }
 ```
 
@@ -99,3 +123,5 @@ Seed the catalog and mappings through the API as a Lab Manager (`POST /api/catal
 * Corrections are new versions and go to the HMIS as amendments that reference the original HMIS result id.
 * Every state change writes a hash-chained audit event in the same transaction; UPDATE and DELETE on the audit
   table are refused by a trigger.
+* Nothing is autoverified at install. A rule needs a validation document ID and a second Lab Manager, and releases a
+  result only when every condition holds (first run, numeric, in limits, no flags, delta passed, unflagged QC in the window).

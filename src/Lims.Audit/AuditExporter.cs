@@ -31,6 +31,8 @@ public sealed class AuditExportOptions
     public SyslogOptions Syslog { get; set; } = new();
     public TimeSpan Interval { get; set; } = TimeSpan.FromSeconds(30);
     public TimeSpan AnchorInterval { get; set; } = TimeSpan.FromHours(1);
+    /// <summary>Secret (at least 32 characters; dpapi-machine:, file: or credential: reference) for signing audit exports from the Audit screen.</summary>
+    public string? SigningKey { get; set; }
 }
 
 public sealed record AuditExportRow(long Seq, DateTime OccurredAt, string Actor, string Action, string EntityType, string? EntityId,
